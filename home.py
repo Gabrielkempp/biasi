@@ -7,8 +7,21 @@ from datetime import datetime
 import locale
 
 # Configurar locale para formato brasileiro
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_ALL, 'portuguese_brazil')
+    except:
+        locale.setlocale(locale.LC_ALL, '')  # Usa o locale padrão do sistema
 
+# Modifique também a função convert_to_real para ser mais resiliente
+def convert_to_real(value):
+    try:
+        return locale.currency(value, grouping=True)
+    except:
+        # Fallback para formatação manual se o locale falhar
+        return f'R$ {value:,.2f}'.replace(',', '*').replace('.', ',').replace('*', '.')
 # URL da planilha
 sheet_url = "https://docs.google.com/spreadsheets/d/14kGm7ZcimlB8RMO92Tsc-lCVJtyvURKRKpzpLRGbV6E/export?format=csv&gid=0"
 
