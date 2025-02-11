@@ -1,0 +1,6 @@
+pandas
+pathlib
+plotly
+datetime
+plotly_express
+openpyxl
