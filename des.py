@@ -149,8 +149,6 @@ with st.sidebar:
         df_contas_filtrado = df_contas_filtrado[df_contas_filtrado['Categoria'] == categoria_selecionada]
     
     st.markdown('---')
-    st.markdown('### Sobre')
-    st.markdown('Dashboard para controle de despesas fixas e variáveis.')
 
 # Criar as tabs
 tab1, tab2 = st.tabs(["📑 Despesas Fixas", "👤 Despesas Variáveis"])
@@ -176,25 +174,33 @@ with tab1:
     
     with col2:
         with st.container():
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric(
-                "📊 Média Mensal",
+            st.markdown("""
+            <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
+            <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">📊 Média por Despesa</div>
+            """, unsafe_allow_html=True)
+            st.metric("",
                 convert_to_real(df_contas_filtrado['Valor'].mean())
             )
             st.markdown('</div>', unsafe_allow_html=True)
     
     with col3:
         with st.container():
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
+            <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">⚠️ Maior Despesa</div>
+            """, unsafe_allow_html=True)
             despesas_vencidas = df_contas_filtrado[
                 (df_contas_filtrado['Data_Vencimento'] <= pd.Timestamp.now()) & 
                 (df_contas_filtrado['Data_Pagamento'].isna())
             ]
-            st.metric(
-                "⚠️ Despesas Vencidas",
-                len(despesas_vencidas),
-                delta=f"-{convert_to_real(despesas_vencidas['Valor'].sum())}"
-            )
+
+            # Adicionar métrica para a categoria com o maior valor gasto considerando todas as despesas
+            gastos_por_categoria = df_contas_filtrado.groupby('Categoria')['Valor'].sum()
+            categoria_mais_valor = gastos_por_categoria.idxmax()
+            valor_mais_valor = gastos_por_categoria.max()
+        
+            st.metric(f"{categoria_mais_valor}", f"{convert_to_real(valor_mais_valor)}")
+        
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('---')
@@ -222,65 +228,7 @@ with tab1:
             texttemplate='R$ %{x:,.2f}',
             textposition='outside'
         )
-        st.plotly_chart(fig_categoria, use_container_width=True, config={'displayModeBar': False})
-
-    with col2:
-        st.subheader('📅 Evolução Mensal')
-        df_contas_filtrado['Mês'] = df_contas_filtrado['Data_Vencimento'].dt.strftime('%Y-%m')
-        monthly_expenses = df_contas_filtrado.groupby('Mês')['Valor'].sum()
-        
-        fig_temporal = px.line(
-            monthly_expenses,
-            template='plotly_white',
-            color_discrete_sequence=['#ff6b6b']
-        )
-        fig_temporal.update_layout(
-            height=400,
-            margin=dict(t=30, b=0, l=0, r=0),
-            yaxis_title='Valor Total (R$)',
-            xaxis_title='',
-        )
-        fig_temporal.add_trace(
-            go.Scatter(
-                x=monthly_expenses.index,
-                y=[monthly_expenses.mean()] * len(monthly_expenses),
-                name='Média',
-                line=dict(color='gray', dash='dash')
-            )
-        )
-        st.plotly_chart(fig_temporal, use_container_width=True, config={'displayModeBar': False})
-
-    # Status de pagamentos
-    st.markdown('---')
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader('🎯 Status dos Pagamentos')
-        status_data = {
-            'Status': ['Pago', 'Pendente', 'Vencido'],
-            'Quantidade': [
-                len(df_contas_filtrado[df_contas_filtrado['Data_Pagamento'].notna()]),
-                len(df_contas_filtrado[
-                    (df_contas_filtrado['Data_Pagamento'].isna()) & 
-                    (df_contas_filtrado['Data_Vencimento'] > pd.Timestamp.now())
-                ]),
-                len(despesas_vencidas)
-            ]
-        }
-        status_df = pd.DataFrame(status_data)
-        
-        fig_status = px.pie(
-            status_df,
-            values='Quantidade',
-            names='Status',
-            template='plotly_white',
-            color_discrete_sequence=['#51cf66', '#ffd43b', '#ff6b6b']
-        )
-        fig_status.update_layout(
-            height=300,
-            margin=dict(t=30, b=0, l=0, r=0),
-        )
-        st.plotly_chart(fig_status, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(fig_categoria, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
 
     with col2:
         st.subheader('💳 Formas de Pagamento')
@@ -303,8 +251,8 @@ with tab1:
             texttemplate='R$ %{x:,.2f}',
             textposition='outside'
         )
-        st.plotly_chart(fig_payment, use_container_width=True, config={'displayModeBar': False})
-
+        st.plotly_chart(fig_payment, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+    
     # Tabela detalhada
     st.markdown('---')
     st.subheader('📋 Detalhamento das Despesas')
@@ -342,10 +290,9 @@ with tab1:
             'background-color: #f8f9fa'
             for col, val in x.items()
         ], axis=1),
-        height=400
+        height=400, width=1000
     )
 
-# Tab 2 - Despesas Variáveis
 # Tab 2 - Despesas Variáveis
 with tab2:
     st.header('👤 Análise de Despesas Variáveis')
@@ -355,41 +302,42 @@ with tab2:
     col1, col2, col3 = st.columns(3)
     with col1:
         with st.container():
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric(
-                "💰 Total de Despesas",
-                convert_to_real(df_pessoal_filtrado['Valor'].sum()),
-                delta=f"-{convert_to_real(df_pessoal_filtrado['Valor'].mean())}"
-            )
+            st.markdown("""
+            <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
+            <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">💰 Total de Despesas</div>
+            """, unsafe_allow_html=True)
+            st.metric("",
+                convert_to_real(df_pessoal_filtrado['Valor'].sum()))
             st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
         with st.container():
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric(
-                "📊 Média por Despesa",
+            st.markdown("""
+            <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
+            <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">📊 Média por Despesa</div>
+            """, unsafe_allow_html=True)
+            st.metric("",
                 convert_to_real(df_pessoal_filtrado['Valor'].mean())
             )
             st.markdown('</div>', unsafe_allow_html=True)
     
     with col3:
         with st.container():
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
+            <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">💰 Maior Gasto</div>
+            """, unsafe_allow_html=True)
             df_pessoal_filtrado['Mês'] = df_pessoal_filtrado['Data'].dt.strftime('%Y-%m')
             mes_atual = pd.Timestamp.now().strftime('%Y-%m')
             despesas_mes_atual = df_pessoal_filtrado[df_pessoal_filtrado['Mês'] == mes_atual]['Valor'].sum()
             df_meses_anteriores = df_pessoal_filtrado[df_pessoal_filtrado['Mês'] < mes_atual]
-            if len(df_meses_anteriores) > 0:
-                despesas_mes_anterior = df_meses_anteriores['Valor'].mean()
-                variacao = ((despesas_mes_atual - despesas_mes_anterior)/despesas_mes_anterior)*100 if despesas_mes_anterior > 0 else 0
-            else:
-                variacao = 0
-            
-            st.metric(
-                "📅 Despesas do Mês",
-                convert_to_real(despesas_mes_atual),
-                delta=f"{variacao:.1f}% em relação à média"
-            )
+
+            gastos_por_pessoa = df_pessoal_filtrado.groupby('Nome')['Valor'].sum()
+            pessoa_mais_gastou = gastos_por_pessoa.idxmax()
+            valor_mais_gastou = gastos_por_pessoa.max()
+        
+            st.metric("", f"{pessoa_mais_gastou}: {convert_to_real(valor_mais_gastou)}")
+        
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('---')
@@ -420,52 +368,6 @@ with tab2:
         st.plotly_chart(fig_pessoa, use_container_width=True, config={'displayModeBar': False})
 
     with col2:
-        st.subheader('📅 Evolução Mensal')
-        monthly_personal = df_pessoal_filtrado.groupby('Mês')['Valor'].sum()
-        fig_temporal_pessoal = px.line(
-            monthly_personal,
-            template='plotly_white',
-            color_discrete_sequence=['#9775fa']
-        )
-        fig_temporal_pessoal.update_layout(
-            height=400,
-            margin=dict(t=30, b=0, l=0, r=0),
-            yaxis_title='Valor Total (R$)',
-            xaxis_title='',
-        )
-        fig_temporal_pessoal.add_trace(
-            go.Scatter(
-                x=monthly_personal.index,
-                y=[monthly_personal.mean()] * len(monthly_personal),
-                name='Média',
-                line=dict(color='gray', dash='dash')
-            )
-        )
-        st.plotly_chart(fig_temporal_pessoal, use_container_width=True, config={'displayModeBar': False})
-
-    # Análises adicionais
-    st.markdown('---')
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader('📊 Distribuição das Despesas')
-        fig_dist = px.histogram(
-            df_pessoal_filtrado,
-            x='Valor',
-            nbins=20,
-            template='plotly_white',
-            color_discrete_sequence=['#9775fa']
-        )
-        fig_dist.update_layout(
-            height=300,
-            margin=dict(t=30, b=0, l=0, r=0),
-            yaxis_title='Frequência',
-            xaxis_title='Valor (R$)',
-            showlegend=False,
-        )
-        st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
-    
-    with col2:
         st.subheader('📈 Despesas Acumuladas')
         df_pessoal_sorted = df_pessoal_filtrado.sort_values('Data')
         df_pessoal_sorted['Valor_Acumulado'] = df_pessoal_sorted['Valor'].cumsum()
@@ -495,7 +397,7 @@ with tab2:
     df_pessoal_display['Mês'] = df_pessoal_display['Mês'].apply(traduzir_mes)
     
     # Reordenar colunas
-    df_pessoal_display = df_pessoal_display[['Data', 'Nome', 'Valor', 'Mês']]
+    df_pessoal_display = df_pessoal_display[['Data', 'Nome', 'Valor']]
     
     st.dataframe(
         df_pessoal_display.style
@@ -509,5 +411,5 @@ with tab2:
             {'selector': 'tr:hover', 'props': [('background-color', '#f3f0ff')]}
         ])
         .apply(lambda x: ['background-color: #f8f9fa' for _ in range(len(x))]),
-        height=400
+        height=400, width=600
     )

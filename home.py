@@ -25,6 +25,8 @@ def convert_to_real(value):
 # URL da planilha
 sheet_url = "https://docs.google.com/spreadsheets/d/14kGm7ZcimlB8RMO92Tsc-lCVJtyvURKRKpzpLRGbV6E/export?format=csv&gid=0"
 
+
+
 # Função de conversão monetária aprimorada
 def convert_to_float(value):
     if pd.isna(value):
