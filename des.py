@@ -130,10 +130,15 @@ with st.sidebar:
         max_value=data_final
     )
     
+    
     if len(datas) == 2:
         start_date, end_date = datas
-        mask_contas = (df_contas['Data_Vencimento'].dt.date >= start_date) & (df_contas['Data_Vencimento'].dt.date <= end_date)
-        mask_pessoal = (df_pessoal['Data'].dt.date >= start_date) & (df_pessoal['Data'].dt.date <= end_date)
+        # Converter para Timestamp para garantir que a comparação seja feita entre tipos compatíveis
+        start_timestamp = pd.Timestamp(start_date)
+        end_timestamp = pd.Timestamp(end_date)
+        
+        mask_contas = (df_contas['Data_Vencimento'] >= start_timestamp) & (df_contas['Data_Vencimento'] <= end_timestamp)
+        mask_pessoal = (df_pessoal['Data'] >= start_timestamp) & (df_pessoal['Data'] <= end_timestamp)
         
         df_contas_filtrado = df_contas[mask_contas]
         df_pessoal_filtrado = df_pessoal[mask_pessoal]
@@ -151,11 +156,11 @@ with st.sidebar:
     st.markdown('---')
 
 # Criar as tabs
-tab1, tab2 = st.tabs(["📑 Despesas Fixas", "👤 Despesas Variáveis"])
+tab1, tab2 = st.tabs(["📑 Despesa Biasi", "👤 Despesa Pessoal"])
 
 # Tab 1 - Despesas Fixas
 with tab1:
-    st.header('📊 Análise de Despesas Fixas')
+    st.header('📊 Análise de Despesas')
     st.markdown('---')
     
     # Cards de métricas
@@ -196,11 +201,15 @@ with tab1:
 
             # Adicionar métrica para a categoria com o maior valor gasto considerando todas as despesas
             gastos_por_categoria = df_contas_filtrado.groupby('Categoria')['Valor'].sum()
-            categoria_mais_valor = gastos_por_categoria.idxmax()
-            valor_mais_valor = gastos_por_categoria.max()
-        
+            if not gastos_por_categoria.empty:
+                categoria_mais_valor = gastos_por_categoria.idxmax()
+                valor_mais_valor = gastos_por_categoria.max()
+            else:
+                categoria_mais_valor = "N/A"
+                valor_mais_valor = 0
+
             st.metric(f"{categoria_mais_valor}", f"{convert_to_real(valor_mais_valor)}")
-        
+
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('---')
@@ -295,7 +304,7 @@ with tab1:
 
 # Tab 2 - Despesas Variáveis
 with tab2:
-    st.header('👤 Análise de Despesas Variáveis')
+    st.header('👤 Análise de Despesa Pessoal')
     st.markdown('---')
     
     # Cards de métricas
@@ -306,100 +315,162 @@ with tab2:
             <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
             <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">💰 Total de Despesas</div>
             """, unsafe_allow_html=True)
-            st.metric("",
-                convert_to_real(df_pessoal_filtrado['Valor'].sum()))
+            
+            # Verificar se o DataFrame não está vazio
+            if not df_pessoal_filtrado.empty:
+                total_despesas = df_pessoal_filtrado['Valor'].sum()
+            else:
+                total_despesas = 0
+                
+            st.metric("", convert_to_real(total_despesas))
             st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col2:
         with st.container():
             st.markdown("""
             <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
             <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">📊 Média por Despesa</div>
             """, unsafe_allow_html=True)
-            st.metric("",
-                convert_to_real(df_pessoal_filtrado['Valor'].mean())
-            )
+            
+            # Verificar se o DataFrame não está vazio
+            if not df_pessoal_filtrado.empty:
+                media_despesas = df_pessoal_filtrado['Valor'].mean()
+            else:
+                media_despesas = 0
+                
+            st.metric("", convert_to_real(media_despesas))
             st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col3:
         with st.container():
             st.markdown("""
             <div style="background-color: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);">
             <div style="color: rgb(71, 85, 105); font-size: 1rem; font-weight: 400;">💰 Maior Gasto</div>
             """, unsafe_allow_html=True)
-            df_pessoal_filtrado['Mês'] = df_pessoal_filtrado['Data'].dt.strftime('%Y-%m')
-            mes_atual = pd.Timestamp.now().strftime('%Y-%m')
-            despesas_mes_atual = df_pessoal_filtrado[df_pessoal_filtrado['Mês'] == mes_atual]['Valor'].sum()
-            df_meses_anteriores = df_pessoal_filtrado[df_pessoal_filtrado['Mês'] < mes_atual]
-
-            gastos_por_pessoa = df_pessoal_filtrado.groupby('Nome')['Valor'].sum()
-            pessoa_mais_gastou = gastos_por_pessoa.idxmax()
-            valor_mais_gastou = gastos_por_pessoa.max()
-        
+            
+            # Tratar com segurança a extração de mês
+            if not df_pessoal_filtrado.empty:
+                # Criar uma cópia segura do DataFrame
+                df_temp = df_pessoal_filtrado.copy()
+                # Garantir que a coluna Data não tenha NaN
+                df_temp = df_temp.dropna(subset=['Data'])
+                
+                if not df_temp.empty:
+                    df_temp['Mês'] = df_temp['Data'].dt.strftime('%Y-%m')
+                    mes_atual = pd.Timestamp.now().strftime('%Y-%m')
+                    
+                    # Calcular as despesas do mês atual de forma segura
+                    despesas_mes_atual = df_temp[df_temp['Mês'] == mes_atual]['Valor'].sum() if not df_temp.empty else 0
+                    
+                    # Calcular os gastos por pessoa de forma segura
+                    gastos_por_pessoa = df_temp.groupby('Nome')['Valor'].sum()
+                    
+                    if not gastos_por_pessoa.empty:
+                        pessoa_mais_gastou = gastos_por_pessoa.idxmax()
+                        valor_mais_gastou = gastos_por_pessoa.max()
+                    else:
+                        pessoa_mais_gastou = "N/A"
+                        valor_mais_gastou = 0
+                else:
+                    pessoa_mais_gastou = "N/A"
+                    valor_mais_gastou = 0
+            else:
+                pessoa_mais_gastou = "N/A"
+                valor_mais_gastou = 0
+            
             st.metric("", f"{pessoa_mais_gastou}: {convert_to_real(valor_mais_gastou)}")
-        
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('---')
 
     # Gráficos em duas colunas
     col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader('👥 Despesas por Pessoa')
-        pessoa_sum = df_pessoal_filtrado.groupby('Nome')['Valor'].sum().sort_values(ascending=True)
-        fig_pessoa = px.bar(
-            pessoa_sum,
-            orientation='h',
-            template='plotly_white',
-            color_discrete_sequence=['#9775fa']
-        )
-        fig_pessoa.update_layout(
-            height=400,
-            margin=dict(t=30, b=0, l=0, r=0),
-            yaxis_title='',
-            xaxis_title='Valor Total (R$)',
-            showlegend=False,
-        )
-        fig_pessoa.update_traces(
-            texttemplate='R$ %{x:,.2f}',
-            textposition='outside'
-        )
-        st.plotly_chart(fig_pessoa, use_container_width=True, config={'displayModeBar': False})
 
-    with col2:
-        st.subheader('📈 Despesas Acumuladas')
-        df_pessoal_sorted = df_pessoal_filtrado.sort_values('Data')
-        df_pessoal_sorted['Valor_Acumulado'] = df_pessoal_sorted['Valor'].cumsum()
+with col1:
+    st.subheader('👥 Despesas por Pessoa')
+    
+    if not df_pessoal_filtrado.empty:
+        pessoa_sum = df_pessoal_filtrado.groupby('Nome')['Valor'].sum().sort_values(ascending=False)
+
+        if not pessoa_sum.empty:
+            # Convertendo a série para DataFrame para melhor manipulação
+            df_plot = pessoa_sum.reset_index()
+            
+            # Criando o gráfico de colunas (barras verticais)
+            fig_pessoa = px.bar(
+                df_plot,
+                x='Nome',           # Eixo X com nomes das pessoas
+                y='Valor',          # Eixo Y com valores
+                template='plotly_white',
+                color_discrete_sequence=['#9775fa']
+            )
+            
+            # Configurando o layout do gráfico
+            fig_pessoa.update_layout(
+                height=400,
+                margin=dict(t=30, b=0, l=0, r=0),
+                yaxis_title='Valor Total (R$)',
+                xaxis_title='',
+                showlegend=False,
+            )
+            
+            # Configurando o formato dos textos nas barras
+            fig_pessoa.update_traces(
+                texttemplate='R$ %{y:,.2f}',
+                textposition='outside'
+            )
+            
+            # Exibindo o gráfico no Streamlit
+            st.plotly_chart(fig_pessoa, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+            
+        else:
+            st.info("Não há dados para exibir no período selecionado.")
+    else:
+        st.info("Não há dados para exibir no período selecionado.")
+
+with col2:
+    st.subheader('📈 Despesas Acumuladas')
+    
+    if not df_pessoal_filtrado.empty:
+        # Verificar se há dados não-NaN para ordenação
+        df_temp = df_pessoal_filtrado.dropna(subset=['Data'])
         
-        fig_acumulado = px.line(
-            df_pessoal_sorted,
-            x='Data',
-            y='Valor_Acumulado',
-            template='plotly_white',
-            color_discrete_sequence=['#9775fa']
-        )
-        fig_acumulado.update_layout(
-            height=300,
-            margin=dict(t=30, b=0, l=0, r=0),
-            yaxis_title='Valor Acumulado (R$)',
-            xaxis_title='',
-        )
-        st.plotly_chart(fig_acumulado, use_container_width=True, config={'displayModeBar': False})
+        if not df_temp.empty:
+            df_pessoal_sorted = df_temp.sort_values('Data')
+            df_pessoal_sorted['Valor_Acumulado'] = df_pessoal_sorted['Valor'].cumsum()
+            
+            fig_acumulado = px.line(
+                df_pessoal_sorted,
+                x='Data',
+                y='Valor_Acumulado',
+                template='plotly_white',
+                color_discrete_sequence=['#9775fa']
+            )
+            fig_acumulado.update_layout(
+                height=300,
+                margin=dict(t=30, b=0, l=0, r=0),
+                yaxis_title='Valor Acumulado (R$)',
+                xaxis_title='',
+            )
+            st.plotly_chart(fig_acumulado, use_container_width=True,  config={'displayModeBar': False, 'staticPlot': True})
+        else:
+            st.info("Não há dados com datas válidas para exibir no período selecionado.")
+    else:
+        st.info("Não há dados para exibir no período selecionado.")
 
-    # Tabela detalhada
-    st.markdown('---')
-    st.subheader('📋 Detalhamento das Despesas')
+# Tabela detalhada
+st.markdown('---')
+st.subheader('📋 Detalhamento das Despesas')
+   
+df_pessoal_display = df_pessoal_filtrado.copy()
+df_pessoal_display['Data'] = df_pessoal_display['Data'].dt.strftime('%d/%m/%Y')
+df_pessoal_display['Mês'] = pd.to_datetime(df_pessoal_display['Data'], format='%d/%m/%Y', dayfirst=True).dt.strftime('%B/%Y')
+df_pessoal_display['Mês'] = df_pessoal_display['Mês'].apply(traduzir_mes)
     
-    df_pessoal_display = df_pessoal_filtrado.copy()
-    df_pessoal_display['Data'] = df_pessoal_display['Data'].dt.strftime('%d/%m/%Y')
-    df_pessoal_display['Mês'] = pd.to_datetime(df_pessoal_display['Data'], format='%d/%m/%Y', dayfirst=True).dt.strftime('%B/%Y')
-    df_pessoal_display['Mês'] = df_pessoal_display['Mês'].apply(traduzir_mes)
+# Reordenar colunas
+df_pessoal_display = df_pessoal_display[['Data', 'Nome', 'Valor']]
     
-    # Reordenar colunas
-    df_pessoal_display = df_pessoal_display[['Data', 'Nome', 'Valor']]
-    
-    st.dataframe(
+st.dataframe(
         df_pessoal_display.style
         .format({'Valor': 'R$ {:,.2f}'})
         .set_properties(**{
@@ -412,4 +483,4 @@ with tab2:
         ])
         .apply(lambda x: ['background-color: #f8f9fa' for _ in range(len(x))]),
         height=400, width=600
-    )
+)    
