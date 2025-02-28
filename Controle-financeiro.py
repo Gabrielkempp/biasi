@@ -194,89 +194,91 @@ try:
         # Separador para a próxima seção
         st.markdown("---")
         
-        # GRÁFICO PRINCIPAL
-        st.subheader('📈 Evolução Mensal')
-        
-        # Gráfico comparativo em tela cheia
-        fig = go.Figure()
-        
-        # Adicionar barras de entrada
-        fig.add_trace(go.Bar(
-            x=df['Mês'],
-            y=df['Entrada'],
-            name='Entrada',
-            marker_color='#4CAF50'
-        ))
-        
-        # Adicionar barras de saída
-        fig.add_trace(go.Bar(
-            x=df['Mês'],
-            y=df['Saída'],
-            name='Saída',
-            marker_color='#F44336'
-        ))
-        
-        # Adicionar linha de meta
-        fig.add_trace(go.Scatter(
-            x=df['Mês'],
-            y=df['Meta'],
-            name='Meta',
-            line=dict(color='#0C2F66', width=2, dash='dash'),
-            mode='lines+markers'
-        ))
-        
-        # Configurar layout
-        fig.update_layout(
-            barmode='group',
-            template='plotly_white',
-            height=400,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            yaxis_title='Valor (R$)',
-            xaxis_title='Mês'
-        )
-        
-        # Exibir gráfico
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
-        
-        # ANÁLISE DETALHADA
-        st.markdown("---")
-        st.header('Detalhes')
+        # Criar duas colunas
+        col1, col2 = st.columns(2)
 
-        
-        st.subheader("💵 Saldo Mensal")
-        # Gráfico de saldo mensal
-        fig_saldo = go.Figure()
+        # Coluna 1 - Gráfico Principal
+        with col1:
+            st.subheader('📈 Evolução Mensal')
             
-        # Adicionar barras de saldo
-        fig_saldo.add_trace(go.Bar(
+            # Gráfico comparativo
+            fig = go.Figure()
+            
+            # Adicionar barras de entrada
+            fig.add_trace(go.Bar(
+                x=df['Mês'],
+                y=df['Entrada'],
+                name='Entrada',
+                marker_color='#4CAF50'
+            ))
+            
+            # Adicionar barras de saída
+            fig.add_trace(go.Bar(
+                x=df['Mês'],
+                y=df['Saída'],
+                name='Saída',
+                marker_color='#F44336'
+            ))
+            
+            # Adicionar linha de meta
+            fig.add_trace(go.Scatter(
+                x=df['Mês'],
+                y=df['Meta'],
+                name='Meta',
+                line=dict(color='#0C2F66', width=2, dash='dash'),
+                mode='lines+markers'
+            ))
+            
+            # Configurar layout
+            fig.update_layout(
+                barmode='group',
+                template='plotly_white',
+                height=400,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis_title='Valor (R$)',
+                xaxis_title='Mês'
+            )
+            
+            # Exibir gráfico
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+
+        # Coluna 2 - Análise Detalhada
+        with col2:
+            st.header('Detalhes')
+            st.subheader("💵 Saldo Mensal")
+            
+            # Gráfico de saldo mensal
+            fig_saldo = go.Figure()
+            
+            # Adicionar barras de saldo
+            fig_saldo.add_trace(go.Bar(
                 x=df['Mês'],
                 y=df['Diferença'],
                 name='Saldo',
                 marker_color=['#4CAF50' if val >= 0 else '#F44336' for val in df['Diferença']]
-        ))
+            ))
             
-        # Adicionar linha de zero
-        fig_saldo.add_shape(
+            # Adicionar linha de zero
+            fig_saldo.add_shape(
                 type="line",
                 x0=df['Mês'].iloc[0],
                 y0=0,
                 x1=df['Mês'].iloc[-1],
                 y1=0,
                 line=dict(color="black", width=1, dash="dash")
-        )
+            )
             
             # Configurar layout
-        fig_saldo.update_layout(
+            fig_saldo.update_layout(
                 template='plotly_white',
                 height=300,
                 showlegend=False,
                 yaxis_title='Valor (R$)',
                 margin=dict(l=20, r=20, t=20, b=20)  # Margens reduzidas
-        )
+            )
             
-        # Exibir gráfico
-        st.plotly_chart(fig_saldo, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
-        st.markdown('</div>', unsafe_allow_html=True)
+            # Exibir gráfico
+            st.plotly_chart(fig_saldo, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
         
        
         
