@@ -102,8 +102,8 @@ st.markdown("""
     .stMetric {
         background-color: #f8f9fa;
         padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 20px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
     .stProgress {
         background-color: rgba(28, 225, 117, 0.18);
@@ -165,62 +165,32 @@ try:
             melhor_mes = df.iloc[melhor_mes_idx]
             pior_mes = df.iloc[pior_mes_idx]
         
-        # LAYOUT REORGANIZADO: DASHBOARD PRINCIPAL
-        st.header('Dashboard Principal')
+        # Seção 1: Valores totais            
+        metrics_col1, metrics_col2, metrics_col3, teste, cards = st.columns([3,3,3,1,4])
+        metrics_col1.subheader('📊 Valores Totais')    
+        metrics_col1.metric('💹 Total de Entradas', convert_to_real(total_entrada))
+        metrics_col2.subheader(' ')
+        metrics_col2.metric('📉 Total de Saídas', convert_to_real(total_saida))
+        metrics_col3.subheader(' ')
+        metrics_col3.metric('💰 Saldo', convert_to_real(saldo))   
         
-        # Duas seções principais lado a lado
-        col_totais, col_performance = st.columns([1, 1])
-        
-        # Seção 1: Valores totais
-        with col_totais:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader('📊 Valores Totais')
-            
-            metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
-            
-            metrics_col1.metric('💹 Total de Entradas', convert_to_real(total_entrada))
-            metrics_col2.metric('📉 Total de Saídas', convert_to_real(total_saida))
-            metrics_col3.metric('💰 Saldo', convert_to_real(saldo), 
-                   delta=f"{convert_to_real(saldo)}" if saldo != 0 else None)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-        # Seção 2: Análise de desempenho (movida para cima)
-        with col_performance:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader('🎯 Análise de Desempenho')
-            
-            # Layout em duas linhas para os indicadores
-            perf_row1_col1, perf_row1_col2 = st.columns(2)
-            perf_row2_col1, perf_row2_col2 = st.columns(2)
-            
-            perf_row1_col1.metric(
-                "Meses com Saldo Positivo", 
-                f"{meses_positivos} de {total_meses}", 
-                f"{percentual_positivo:.1f}%"
-            )
-            
-            perf_row1_col2.metric(
-                "Meses Acima da Meta", 
-                f"{meses_acima_meta} de {total_meses}", 
-                f"{percentual_meta:.1f}%"
-            )
-            
+        with cards:
+            st.subheader('📊 Melhor e pior mês')
+            co1, co2 = st.columns(2)
             if not df.empty:
-                perf_row2_col1.metric(
+                co1.metric(
                     "Melhor Mês", 
                     f"{melhor_mes['Mês']}", 
                     f"+{convert_to_real(melhor_mes['Diferença'])}"
                 )
-                
-                perf_row2_col2.metric(
-                    "Pior Mês",
-                    f"{pior_mes['Mês']}",
-                    f"{convert_to_real(pior_mes['Diferença'])}",
-                    delta_color="inverse"
+
+                co2.metric(
+                "Pior Mês",
+                f"{pior_mes['Mês']}",
+                f"{convert_to_real(pior_mes['Diferença'])}",
+                delta_color="inverse"
                 )
-            st.markdown('</div>', unsafe_allow_html=True)
-        
+                     
         # Separador para a próxima seção
         st.markdown("---")
         
@@ -251,7 +221,7 @@ try:
             x=df['Mês'],
             y=df['Meta'],
             name='Meta',
-            line=dict(color='#FFC107', width=2, dash='dash'),
+            line=dict(color='#0C2F66', width=2, dash='dash'),
             mode='lines+markers'
         ))
         
@@ -270,113 +240,60 @@ try:
         
         # ANÁLISE DETALHADA
         st.markdown("---")
-        st.header('Análise Detalhada')
+        st.header('Detalhes')
+
         
-        # Layout de análise em três colunas
-        col_table, col_chart1, col_chart2 = st.columns([1, 1, 1])
-        
-        with col_table:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader("📋 Dados Mensais")
-            # Formatar para exibição
-            df_exibicao = df.copy()
-            for col in ['Entrada', 'Saída', 'Meta', 'Diferença']:
-                df_exibicao[col] = df_exibicao[col].apply(convert_to_real)
+        st.subheader("💵 Saldo Mensal")
+        # Gráfico de saldo mensal
+        fig_saldo = go.Figure()
             
-            # Exibir tabela
-            st.dataframe(
-                df_exibicao,
-                use_container_width=True,
-                hide_index=True
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        with col_chart1:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader("💵 Saldo Mensal")
-            # Gráfico de saldo mensal
-            fig_saldo = go.Figure()
-            
-            # Adicionar barras de saldo
-            fig_saldo.add_trace(go.Bar(
+        # Adicionar barras de saldo
+        fig_saldo.add_trace(go.Bar(
                 x=df['Mês'],
                 y=df['Diferença'],
                 name='Saldo',
                 marker_color=['#4CAF50' if val >= 0 else '#F44336' for val in df['Diferença']]
-            ))
+        ))
             
-            # Adicionar linha de zero
-            fig_saldo.add_shape(
+        # Adicionar linha de zero
+        fig_saldo.add_shape(
                 type="line",
                 x0=df['Mês'].iloc[0],
                 y0=0,
                 x1=df['Mês'].iloc[-1],
                 y1=0,
                 line=dict(color="black", width=1, dash="dash")
-            )
+        )
             
             # Configurar layout
-            fig_saldo.update_layout(
+        fig_saldo.update_layout(
                 template='plotly_white',
                 height=300,
                 showlegend=False,
                 yaxis_title='Valor (R$)',
                 margin=dict(l=20, r=20, t=20, b=20)  # Margens reduzidas
-            )
+        )
             
-            # Adicionar valores às barras
-            fig_saldo.update_traces(
-                texttemplate='%{y:,.2f}',
-                textposition='outside'
-            )
-            
-            # Exibir gráfico
-            st.plotly_chart(fig_saldo, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Exibir gráfico
+        st.plotly_chart(fig_saldo, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        with col_chart2:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader("📊 Tendência Acumulada")
-            
-            # Calcular valores acumulados
-            df_acumulado = df.copy()
-            df_acumulado['Entrada_Acumulada'] = df_acumulado['Entrada'].cumsum()
-            df_acumulado['Saída_Acumulada'] = df_acumulado['Saída'].cumsum()
-            
-            # Gráfico de acumulado
-            fig_acum = go.Figure()
-            
-            fig_acum.add_trace(go.Scatter(
-                x=df_acumulado['Mês'],
-                y=df_acumulado['Entrada_Acumulada'],
-                name='Entrada Acumulada',
-                line=dict(color='#4CAF50', width=3),
-                fill='tozeroy',
-                mode='lines+markers'
-            ))
-            
-            fig_acum.add_trace(go.Scatter(
-                x=df_acumulado['Mês'],
-                y=df_acumulado['Saída_Acumulada'],
-                name='Saída Acumulada',
-                line=dict(color='#F44336', width=3),
-                fill='tozeroy',
-                mode='lines+markers'
-            ))
-            
-            # Configurar layout
-            fig_acum.update_layout(
-                template='plotly_white',
-                height=300,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                yaxis_title='Valor Acumulado (R$)',
-                margin=dict(l=20, r=20, t=20, b=20)  # Margens reduzidas
-            )
-            
-            # Exibir gráfico
-            st.plotly_chart(fig_acum, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
-            st.markdown('</div>', unsafe_allow_html=True)
+       
         
+        st.subheader("📋 Dados Mensais")
+        # Formatar para exibição
+        df_exibicao = df.copy()
+        for col in ['Entrada', 'Saída', 'Meta', 'Diferença']:
+               df_exibicao[col] = df_exibicao[col].apply(convert_to_real)
+            
+         # Exibir tabela
+        st.dataframe(
+            df_exibicao,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
         # Nota de rodapé
         st.markdown("---")
         st.caption("Dados atualizados automaticamente da planilha do Google Sheets.")
