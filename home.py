@@ -89,14 +89,15 @@ st.markdown("""
     .stMetric {
         background-color: #f8f9fa;
         padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 25px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
     .stProgress {
         background-color: rgba(28, 225, 117, 0.18);
         padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 25px;
+        border: 1px solid green;    
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
     h1 {
         color: #1e88e5;
@@ -105,6 +106,10 @@ st.markdown("""
     h2 {
         color: #333;
         padding: 1rem 0;
+    }
+    .late-payment {
+        color: #FF5252;
+        font-weight: bold;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -117,6 +122,9 @@ try:
     if df_processed.empty:
         st.error("Falha no processamento dos dados. Verifique a fonte.")
     else:
+        # Data atual para verificação de atrasos
+        data_atual = datetime.now()
+        
         # Header com logo e título
         col_logo, col_title = st.columns([1, 4])
         with col_title:
@@ -124,20 +132,33 @@ try:
         
         # Cálculo dos valores
         dividas = {
-            'Capital de Giro': {'cols': ['parcelas_0'], 'status': 'status_2'},
-            'Ducato': {'cols': ['parcelas_3'], 'status': 'status_5'},
-            'Muck': {'cols': ['parcelas_6'], 'status': 'status_8'}
+            'Capital de Giro': {'cols': ['parcelas_0'], 'status': 'status_2', 'data': 'data de pgto_1'},
+            'Ducato': {'cols': ['parcelas_3'], 'status': 'status_5', 'data': 'data de pgto_4'},
+            'Muck': {'cols': ['parcelas_6'], 'status': 'status_8', 'data': 'data de pgto_7'}
         }
         
         totais = {}
+        total_atrasado = 0
+        
         for nome, info in dividas.items():
             col = info['cols'][0]
             status_col = info['status']
+            data_col = info['data']
+            
+            # Verifica pagamentos atrasados
+            df_atrasados = df_processed[
+                (df_processed[status_col] == 'PENDENTE') & 
+                (df_processed[data_col] < data_atual)
+            ]
+            
+            valor_atrasado = df_atrasados[col].sum()
+            total_atrasado += valor_atrasado
             
             totais[nome] = {
                 'total': df_processed[col].sum(),
                 'pago': df_processed[df_processed[status_col] == 'PAGO'][col].sum(),
-                'pendente': df_processed[df_processed[status_col] == 'PENDENTE'][col].sum()
+                'pendente': df_processed[df_processed[status_col] == 'PENDENTE'][col].sum(),
+                'atrasado': valor_atrasado
             }
             totais[nome]['porcentagem'] = (totais[nome]['pago'] / totais[nome]['total']) * 100
         
@@ -148,12 +169,13 @@ try:
         total_pendente = sum(d['pendente'] for d in totais.values())
         total_pago = sum(d['pago'] for d in totais.values())
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         col1.metric('💼 Total de Dívidas', convert_to_real(total_geral))
         col2.metric('🔴 Total Pendente', convert_to_real(total_pendente))
         col3.metric('🟢 Total Pago', convert_to_real(total_pago))
-        col4.metric('📊 Percentual Pago', f"{(total_pago/total_geral)*100:.1f}%")
+        col4.metric('⚠️ Total Atrasado', convert_to_real(total_atrasado))
+        col5.metric('📊 Percentual Pago', f"{(total_pago/total_geral)*100:.1f}%")
         
         # Análise detalhada
         st.markdown("---")
@@ -166,12 +188,14 @@ try:
                 st.subheader(f"📑 {nome}")
                 st.metric('Total', convert_to_real(valores['total']))
                 
-                # Criação de colunas para valores pago/pendente
+                # Criação de colunas para valores pago/pendente/atrasado
                 col_paid, col_pending = st.columns(2)
                 with col_paid:
                     st.markdown(f"🟢 **Pago:**\n{convert_to_real(valores['pago'])}")
                 with col_pending:
                     st.markdown(f"🔴 **Pendente:**\n{convert_to_real(valores['pendente'])}")
+                
+                st.markdown(f"⚠️ **Atrasado:** <span class='late-payment'>{convert_to_real(valores['atrasado'])}</span>", unsafe_allow_html=True)
                 
                 # Barra de progresso
                 progress = int(valores['porcentagem'])
@@ -184,16 +208,32 @@ try:
         col_chart1, col_chart2 = st.columns(2)
         
         with col_chart1:
-            # Gráfico de barras empilhadas
+            # Gráfico de barras empilhadas com valores atrasados
             fig_bars = go.Figure()
             
-            for status, color in [('pago', '#2ecc71'), ('pendente', '#e74c3c')]:
-                fig_bars.add_trace(go.Bar(
-                    name=status.title(),
-                    x=list(totais.keys()),
-                    y=[valores[status] for valores in totais.values()],
-                    marker_color=color
-                ))
+            # Adiciona barras para valores pagos
+            fig_bars.add_trace(go.Bar(
+                name='Pago',
+                x=list(totais.keys()),
+                y=[valores['pago'] for valores in totais.values()],
+                marker_color='#2ecc71'
+            ))
+            
+            # Adiciona barras para valores atrasados
+            fig_bars.add_trace(go.Bar(
+                name='Atrasado',
+                x=list(totais.keys()),
+                y=[valores['atrasado'] for valores in totais.values()],
+                marker_color='#FF5252'
+            ))
+            
+            # Adiciona barras para valores pendentes (não atrasados)
+            fig_bars.add_trace(go.Bar(
+                name='Pendente',
+                x=list(totais.keys()),
+                y=[valores['pendente'] - valores['atrasado'] for valores in totais.values()],
+                marker_color='#e74c3c'
+            ))
             
             fig_bars.update_layout(
                 title='Composição das Dívidas',
@@ -222,6 +262,26 @@ try:
             )
             st.plotly_chart(fig_pie, use_container_width=True)
         
+        with col_chart1:
+            # Gráfico para valores atrasados
+            fig_atrasados = go.Figure(data=[
+                go.Bar(
+                    x=list(totais.keys()),
+                    y=[valores['atrasado'] for valores in totais.values()],
+                    marker_color='#FF5252'
+                )
+            ])
+            
+            fig_atrasados.update_layout(
+                title='Valores Atrasados por Dívida',
+                height=300,
+                plot_bgcolor='white',
+                yaxis_title='Valor (R$)',
+                xaxis_title='Tipo de Dívida'
+            )
+            
+            st.plotly_chart(fig_atrasados, use_container_width=True)
+        
         # Tabela detalhada
         if st.checkbox('Mostrar Dados Detalhados'):
             st.markdown("---")
@@ -235,6 +295,7 @@ try:
                     'Total': convert_to_real(valores['total']),
                     'Pago': convert_to_real(valores['pago']),
                     'Pendente': convert_to_real(valores['pendente']),
+                    'Atrasado': convert_to_real(valores['atrasado']),
                     'Progresso': f"{valores['porcentagem']:.1f}%"
                 })
             
@@ -243,6 +304,37 @@ try:
                 use_container_width=True,
                 hide_index=True
             )
+            
+            # Detalhamento de pagamentos atrasados
+            st.subheader('Detalhamento de Pagamentos Atrasados')
+            
+            atrasados_detalhados = []
+            for nome, info in dividas.items():
+                col = info['cols'][0]
+                status_col = info['status']
+                data_col = info['data']
+                
+                df_atrasados = df_processed[
+                    (df_processed[status_col] == 'PENDENTE') & 
+                    (df_processed[data_col] < data_atual)
+                ]
+                
+                for _, row in df_atrasados.iterrows():
+                    atrasados_detalhados.append({
+                        'Tipo de Dívida': nome,
+                        'Valor': convert_to_real(row[col]),
+                        'Data de Pagamento': row[data_col].strftime('%d/%m/%Y'),
+                        'Dias de Atraso': (data_atual - row[data_col]).days
+                    })
+            
+            if atrasados_detalhados:
+                st.dataframe(
+                    pd.DataFrame(atrasados_detalhados),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info('Não há pagamentos atrasados.')
 
 except Exception as e:
     st.error(f"Erro na execução do dashboard: {str(e)}")
