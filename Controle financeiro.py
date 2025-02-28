@@ -8,7 +8,7 @@ import locale
 import requests
 from io import BytesIO
 
-# Configurar locale para formato brasileiro
+# Configurar locale spara formato brasileiro
 try:
     locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 except:
