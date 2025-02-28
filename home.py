@@ -74,7 +74,7 @@ def process_dataframe(df):
 
 # Configuração da página
 st.set_page_config(
-    page_title='Dashboard Financeiro',
+    page_title='Análise Financeira',
     page_icon='💰',
     layout='wide',
     initial_sidebar_state='expanded'
