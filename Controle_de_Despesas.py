@@ -100,7 +100,7 @@ def traduzir_mes(texto):
     return texto
 
 # Leitura e tratamento do DataFrame
-sheet_url = "https://docs.google.com/spreadsheets/d/1nbNmbgO37FC-9dlwivefFZnQ43-5A8H8Is7K9WLqgx4/export?format=csv&gid=634814073"
+sheet_url = "https://docs.google.com/spreadsheets/d/1nbNmbgO37FC-9dlwivefFZnQ43-5A8H8Is7K9WLqgx4/export?format=csv&gid=850128765"
 
 @st.cache_data(ttl=300)  # Cache por 5 minutos
 def load_data():
@@ -116,7 +116,7 @@ df = load_data()
 
 # Separar em dois DataFrames
 df_contas = df.iloc[:, 0:6]
-df_pessoal = df.iloc[:, 6:9]
+df_pessoal = df.iloc[:, 7:10]
 
 # Renomear colunas
 df_contas.columns = ['Nome', 'Valor', 'Data_Vencimento', 'Data_Pagamento', 'Forma_Pagamento', 'Categoria']
@@ -172,7 +172,7 @@ with st.sidebar:
     
     # Filtro de categoria
     st.markdown("### 🏷️ Categorias")
-    categorias = ['Todas'] + sorted(df_contas['Categoria'].unique().tolist())
+    categorias = ['Todas'] + sorted(df_contas['Categoria'].dropna().astype(str).unique().tolist())
     categoria_selecionada = st.selectbox('Selecione a categoria:', categorias)
     
     if categoria_selecionada != 'Todas':
@@ -226,17 +226,41 @@ with tab1:
     st.markdown('---')
 
     # Gráficos em duas colunas
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns((6,4))
     
     with col1:
         st.markdown('<h3 class="section-header">📈 Despesas por Categoria</h3>', unsafe_allow_html=True)
         categoria_sum = df_contas_filtrado.groupby('Categoria')['Valor'].sum().sort_values(ascending=True)
+        
+        # Aplicando capitalize nas categorias
+        categoria_sum.index = categoria_sum.index.str.capitalize()
+        
+        # Calculando um threshold para determinar posição do texto (15% do valor máximo)
+        valor_max = categoria_sum.max()
+        threshold = valor_max * 0.15
+        
+        # Lista para armazenar posições de texto
+        text_positions = []
+        text_colors = []
+        
+        # Determinando posição do texto para cada valor
+        for valor in categoria_sum:
+            if valor >= threshold:
+                text_positions.append('inside')
+                text_colors.append('white')
+            else:
+                text_positions.append('outside')
+                text_colors.append('black')
+        
+        # Criando o gráfico base
         fig_categoria = px.bar(
             categoria_sum,
             orientation='h',
             template='plotly_white',
-            color_discrete_sequence=['#ff6b6b']
+            color_discrete_sequence=['#DD1C1A']
         )
+        
+        # Configurações gerais do layout
         fig_categoria.update_layout(
             height=400,
             margin=dict(t=30, b=0, l=0, r=0),
@@ -246,37 +270,46 @@ with tab1:
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)'
         )
+        
+        # Aplicando as posições de texto individualmente
         fig_categoria.update_traces(
             texttemplate='R$ %{x:,.2f}',
-            textposition='outside'
+            textposition=text_positions
         )
+        
         st.plotly_chart(fig_categoria, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
 
     with col2:
         st.markdown('<h3 class="section-header">💳 Formas de Pagamento</h3>', unsafe_allow_html=True)
-        payment_data = df_contas_filtrado.groupby('Forma_Pagamento')['Valor'].sum().sort_values(ascending=True)
         
-        fig_payment = px.bar(
-            payment_data,
-            orientation='h',
+        # Aplicando capitalize nas categorias
+        payment_data = df_contas_filtrado.groupby('Forma_Pagamento')['Valor'].sum().sort_values(ascending=False)
+        payment_data.index = payment_data.index.str.capitalize()
+        
+        # Definindo a paleta de cores personalizada (da imagem)
+        custom_colors = ['#086788', '#07A0C3', '#F0C808', '#FFF1D0', '#DD1C1A']
+        
+        # Criando gráfico de pizza com as cores personalizadas
+        fig_payment = px.pie(
+            values=payment_data.values,
+            names=payment_data.index,
             template='plotly_white',
-            color_discrete_sequence=['#4dabf7']
+            color_discrete_sequence=custom_colors  # Usando a paleta personalizada
         )
         fig_payment.update_layout(
             height=400,
             margin=dict(t=30, b=0, l=0, r=0),
-            yaxis_title='',
-            xaxis_title='Valor Total (R$)',
-            showlegend=False,
+            showlegend=True,
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)'
         )
         fig_payment.update_traces(
-            texttemplate='R$ %{x:,.2f}',
-            textposition='outside'
+            textinfo='percent+value',
+            texttemplate='%{percent} (R$ %{value:,.2f})',
+            hoverinfo='label+percent+value'
         )
         st.plotly_chart(fig_payment, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
-    
+
     # Tabela detalhada
     st.markdown('---')
     st.markdown('<h3 class="section-header">📋 Detalhamento das Despesas</h3>', unsafe_allow_html=True)
