@@ -589,28 +589,62 @@ def main():
             # Tabela de projeção por ano
             st.subheader("Financiamentos por Ano de Quitação")
             
+            # Criar três colunas com proporções (5,1,5) - a coluna do meio é apenas espaçamento
+            col_left, col_middle, col_right = st.columns([5, 1, 5])
+            
+            # Obter lista de anos ordenados
             anos_quitacao = sorted(df_timeline['Ano quitação'].unique())
             
-            for ano in anos_quitacao:
-                df_ano = df_timeline[df_timeline['Ano quitação'] == ano]
-                
-                st.markdown(f"### {ano}")
-                
-                for _, row in df_ano.iterrows():
-                    banco = row['Banco'] if not pd.isna(row['Banco']) else "Não informado"
-                    valor = formatar_moeda(row['Valor A Pagar'])
+            # Dividir os anos em duas partes
+            metade = (len(anos_quitacao) + 1) // 2  # Arredonda para cima se for ímpar
+            anos_esquerda = anos_quitacao[:metade]
+            anos_direita = anos_quitacao[metade:]
+            
+            # Processando anos na coluna da esquerda
+            with col_left:
+                for ano in anos_esquerda:
+                    df_ano = df_timeline[df_timeline['Ano quitação'] == ano]
                     
-                    st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
-                        <div>
-                            <span style="font-weight: 500;">{row['Descrição']}</span>
-                            <span class="bank-badge" style="background-color: {COLOR_PALETTE[1]};">{banco}</span>
+                    st.markdown(f"### {ano}")
+                    
+                    for _, row in df_ano.iterrows():
+                        banco = row['Banco'] if not pd.isna(row['Banco']) else "Não informado"
+                        valor = formatar_moeda(row['Valor A Pagar'])
+                        
+                        st.markdown(f"""
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+                            <div>
+                                <span style="font-weight: 500;">{row['Descrição']}</span>
+                                <span class="bank-badge" style="background-color: {COLOR_PALETTE[1]};">{banco}</span>
+                            </div>
+                            <div>{valor}</div>
                         </div>
-                        <div>{valor}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("---")
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+            
+            # Processando anos na coluna da direita
+            with col_right:
+                for ano in anos_direita:
+                    df_ano = df_timeline[df_timeline['Ano quitação'] == ano]
+                    
+                    st.markdown(f"### {ano}")
+                    
+                    for _, row in df_ano.iterrows():
+                        banco = row['Banco'] if not pd.isna(row['Banco']) else "Não informado"
+                        valor = formatar_moeda(row['Valor A Pagar'])
+                        
+                        st.markdown(f"""
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+                            <div>
+                                <span style="font-weight: 500;">{row['Descrição']}</span>
+                                <span class="bank-badge" style="background-color: {COLOR_PALETTE[1]};">{banco}</span>
+                            </div>
+                            <div>{valor}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
         else:
             st.info("Não há financiamentos em andamento para projeção.")
         
