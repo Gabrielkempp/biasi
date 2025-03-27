@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
+import altair as alt
 from datetime import datetime
 import locale
 from datetime import timedelta
@@ -19,6 +18,9 @@ st.set_page_config(
 # Definição da paleta de cores da imagem
 COLOR_PALETTE = ['#086788', '#07A0C3', '#F0C808', '#FFF1D0', '#DD1C1A']
 PRIMARY_COLOR = '#DD1C1A'  # Cor principal para gráficos de barra
+
+# Configuração do Altair para renderizar gráficos maiores
+alt.data_transformers.disable_max_rows()
 
 # Aplicando estilo CSS customizado
 st.markdown("""
@@ -364,158 +366,61 @@ if not df.empty:
         st.markdown('<h2 class="section-header">📊 Produção por Produto</h2>', unsafe_allow_html=True)
         
         # Gráfico: Total de unidades por produto
-        produto_sum = df_filtrado.groupby('Produto')['Unidades'].sum().sort_values(ascending=False)
+        producto_df = df_filtrado.groupby('Produto')['Unidades'].sum().reset_index()
+        producto_df = producto_df.sort_values(by="Unidades", ascending=False)  # Ordem decrescente
         
-        fig_produto = px.bar(
-            producto_df := produto_sum.reset_index(),
-            x='Unidades',
-            y='Produto',
-            orientation='h',
-            labels={'Unidades': 'Total de Unidades', 'Produto': 'Produto'},
-            template='plotly_white',
-            color_discrete_sequence=[PRIMARY_COLOR] * len(produto_sum)  # Mesma cor para todos
+        # Manter a ordem original no dataframe (importante para o Altair respeitar)
+        producto_df['ordem'] = range(len(producto_df))
+        
+        # Calcular o tamanho relativo para posicionamento do texto
+        producto_df['tamanho_relativo'] = producto_df['Unidades'] / producto_df['Unidades'].max()
+        
+        # Criar um campo personalizado para ordenação
+        domain = producto_df['Produto'].tolist()
+        
+        # Criar gráfico base e as barras
+        chart_produto = alt.Chart(producto_df).mark_bar(color=PRIMARY_COLOR).encode(
+            y=alt.Y('Produto:N', sort=domain, title='Produto'),
+            x=alt.X('Unidades:Q', title='Total de Unidades'),
+            tooltip=['Produto', 'Unidades']
         )
         
-        fig_produto.update_layout(
-            height=500,
-            margin=dict(t=30, b=0, l=0, r=0),
-            showlegend=False,
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            yaxis={'categoryorder': 'total ascending'}
+        # Texto para barras
+        text_grandes = alt.Chart(producto_df).mark_text(
+            align='left',
+            baseline='middle',
+            dx=15,
+            color='red',
+            fontSize=14,
+            fontWeight='bold'
+        ).encode(
+            y=alt.Y('Produto:N', sort=domain),
+            x='Unidades:Q',
+            text=alt.Text('Unidades:Q', format=',')
         )
         
-        # Configurar posição do texto (dentro ou fora das barras)
-        text_positions = []
-        for i in range(len(producto_df)):
-            valor = producto_df['Unidades'].iloc[i]
-            tamanho_relativo = valor / producto_df['Unidades'].max()
-            
-            # Se o valor for muito pequeno, coloca fora da barra
-            if tamanho_relativo > 0.15:  # Ajustado para melhor visibilidade
-                text_positions.append('inside')
-            else:
-                text_positions.append('outside')
-        
-        # Aplicar as posições de texto
-        fig_produto.update_traces(
-            texttemplate='%{x:,.0f}',
-            textposition=text_positions,
-            textfont=dict(color=['white' if pos == 'inside' else 'black' for pos in text_positions])
+        # Combinar e configurar
+        chart_final_produto = (chart_produto + text_grandes).properties(
+            height=500
+        ).configure_view(
+            strokeWidth=0
+        ).configure_axis(
+            grid=False
         )
         
-        st.plotly_chart(fig_produto, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
-        
-        # Detalhamento da Produção (mantido como está)
-        st.markdown('<h3 class="section-header">📋 Detalhamento da Produção</h3>', unsafe_allow_html=True)
-        
-        # Opções para visualização
-        detalhamento = st.radio(
-            "Selecione o tipo de detalhamento:",
-            ["Por Produto", "Por Data", "Por Responsável", "Dados Completos"],
-            key="detalhamento_tab1"
-        )
-        
-        if detalhamento == "Por Produto":
-            # Agrupar dados por produto
-            df_detalhado = df_filtrado.groupby('Produto').agg({
-                'Unidades': 'sum',
-                'Total_kg': 'sum',
-                'Data': ['min', 'max', 'count']
-            }).reset_index()
-            
-            # Renomear colunas
-            df_detalhado.columns = ['Produto', 'Total Unidades', 'Total kg', 'Primeira Produção', 'Última Produção', 'Dias Produzidos']
-            
-            # Formatar datas
-            df_detalhado['Primeira Produção'] = df_detalhado['Primeira Produção'].dt.strftime('%d/%m/%Y')
-            df_detalhado['Última Produção'] = df_detalhado['Última Produção'].dt.strftime('%d/%m/%Y')
-            
-            # Ordenar por unidades
-            df_detalhado = df_detalhado.sort_values('Total Unidades', ascending=False)
-            
-            # Aplicar estilização
-            st.dataframe(
-                df_detalhado,
-                use_container_width=True,
-                height=400
-            )
-            
-        elif detalhamento == "Por Data":
-            # Agrupar dados por data
-            df_detalhado = df_filtrado.groupby('Data').agg({
-                'Unidades': 'sum',
-                'Total_kg': 'sum',
-                'Produto': 'nunique',
-                'Categoria': lambda x: ', '.join(sorted(set(x)))
-            }).reset_index()
-            
-            # Renomear colunas
-            df_detalhado.columns = ['Data', 'Total Unidades', 'Total kg', 'Qtde. Produtos', 'Categorias']
-            
-            # Formatar data
-            df_detalhado['Data'] = df_detalhado['Data'].dt.strftime('%d/%m/%Y')
-            
-            # Ordenar por data (decrescente)
-            df_detalhado = df_detalhado.sort_values('Data', ascending=False)
-            
-            # Aplicar estilização
-            st.dataframe(
-                df_detalhado,
-                use_container_width=True,
-                height=400
-            )
-            
-        elif detalhamento == "Por Responsável":
-            # Agrupar dados por responsável
-            df_detalhado = df_filtrado.groupby('Responsável Produção').agg({
-                'Unidades': 'sum',
-                'Total_kg': 'sum',
-                'Data': 'nunique',
-                'Produto': lambda x: ', '.join(sorted(set(x))[:3]) + ('...' if len(set(x)) > 3 else '')
-            }).reset_index()
-            
-            # Renomear colunas
-            df_detalhado.columns = ['Responsável', 'Total Unidades', 'Total kg', 'Dias Trabalhados', 'Principais Produtos']
-            
-            # Ordenar por unidades
-            df_detalhado = df_detalhado.sort_values('Total Unidades', ascending=False)
-            
-            # Aplicar estilização
-            st.dataframe(
-                df_detalhado,
-                use_container_width=True,
-                height=400
-            )
-            
-        else:  # Dados Completos
-            # Selecionar colunas relevantes
-            df_detalhado = df_filtrado[['Data', 'Produto', 'Categoria', 'Unidades', 'Tamanho_kg', 'Total_kg', 'Responsável Produção']]
-            
-            # Formatar data
-            df_detalhado['Data'] = df_detalhado['Data'].dt.strftime('%d/%m/%Y')
-            
-            # Ordenar por data (decrescente)
-            df_detalhado = df_detalhado.sort_values('Data', ascending=False)
-            
-            # Aplicar estilização
-            st.dataframe(
-                df_detalhado,
-                use_container_width=True,
-                height=400
-            )
+        st.altair_chart(chart_final_produto, use_container_width=True)
     
     # Tab 2 - Evolução Temporal
     with tab2:
         st.markdown('<h2 class="section-header">📈 Evolução da Produção</h2>', unsafe_allow_html=True)
-        
+        c1,c2 = st.columns(2)
         # Análise por mês - apenas com meses que realmente têm dados
-        st.markdown('<h3 class="section-header">Evolução Mensal</h3>', unsafe_allow_html=True)
+        c1.markdown('<h3 class="section-header">Evolução Mensal</h3>', unsafe_allow_html=True)
         
         # Criar um grupo único de mês e ano para agrupar corretamente
-        df_filtrado['MesAno_Key'] = df_filtrado['Data'].dt.to_period('M')
+        df_filtrado['MesAno_Key'] = df_filtrado['Data'].dt.strftime('%Y-%m')
         
-        # Agrupar por mês e ano utilizando um objeto Period para ordenar corretamente
+        # Agrupar por mês e ano
         df_por_mes = df_filtrado.groupby('MesAno_Key').agg({
             'Unidades': 'sum',
             'Total_kg': 'sum',
@@ -525,86 +430,104 @@ if not df.empty:
         # Ordenar corretamente pelo período
         df_por_mes = df_por_mes.sort_values('MesAno_Key')
         
+        # Calcular média móvel se tivermos mais de um mês
+        if len(df_por_mes) > 1:
+            df_por_mes['Media_Movel'] = df_por_mes['Unidades'].rolling(window=min(2, len(df_por_mes)), min_periods=1).mean()
+        
         # Criamos o gráfico apenas se tivermos dados
         if len(df_por_mes) > 0:
-            fig_mes = go.Figure()
-            
-            # Adicionar barras para unidades
-            fig_mes.add_trace(go.Bar(
-                x=df_por_mes['Nome_Mês'],
-                y=df_por_mes['Unidades'],
-                name='Unidades',
-                marker_color=COLOR_PALETTE[2]  # Jonquil (amarelo)
-            ))
-            
-            # Adicionar linha para média móvel se tivermos mais de um mês
-            if len(df_por_mes) > 1:
-                df_por_mes['Media_Movel'] = df_por_mes['Unidades'].rolling(window=min(2, len(df_por_mes)), min_periods=1).mean()
-                
-                fig_mes.add_trace(go.Scatter(
-                    x=df_por_mes['Nome_Mês'],
-                    y=df_por_mes['Media_Movel'],
-                    name='Média Móvel',
-                    line=dict(color=COLOR_PALETTE[0], width=3),  # Blue Sapphire
-                    mode='lines+markers'
-                ))
-            
-            # Configurar layout
-            fig_mes.update_layout(
-                height=400,
-                margin=dict(t=30, b=0, l=0, r=0),
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis_title='Mês',
-                yaxis_title='Total de Unidades',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
+            # Gráfico de barras para unidades por mês
+            chart_bar_mes = alt.Chart(df_por_mes).mark_bar(color=COLOR_PALETTE[2]).encode(
+                x=alt.X('Nome_Mês:N', title='Mês', sort=None),  # sort=None para preservar a ordem
+                y=alt.Y('Unidades:Q', title='Total de Unidades'),
+                tooltip=['Nome_Mês', 'Unidades']
             )
             
-            st.plotly_chart(fig_mes, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+            # Adicionar linha para média móvel se tivermos mais de um mês
+            if 'Media_Movel' in df_por_mes.columns and len(df_por_mes) > 1:
+                chart_line_mes = alt.Chart(df_por_mes).mark_line(
+                    color=COLOR_PALETTE[0], 
+                    point=True
+                ).encode(
+                    x=alt.X('Nome_Mês:N', sort=None),
+                    y=alt.Y('Media_Movel:Q'),
+                    tooltip=['Nome_Mês', 'Media_Movel']
+                )
+                
+                # Combinar barras e linha
+                chart_mes = (chart_bar_mes + chart_line_mes).properties(
+                    height=400
+                ).configure_view(
+                    strokeWidth=0
+                )
+            else:
+                chart_mes = chart_bar_mes.properties(
+                    height=400
+                ).configure_view(
+                    strokeWidth=0
+                )
+            
+            c1.altair_chart(chart_mes, use_container_width=True)
         
         # Produção acumulada
-        st.markdown('<h3 class="section-header">Produção Acumulada</h3>', unsafe_allow_html=True)
-        
+        c2.markdown('<h3 class="section-header">Produção Acumulada</h3>', unsafe_allow_html=True)
+
         # Agrupar dados por data
         df_por_data = df_filtrado.groupby('Data')[['Unidades', 'Total_kg']].sum().reset_index()
-        
+
         # Ordenar por data para o acumulado correto
         df_por_data = df_por_data.sort_values('Data')
-        
+
         # Calcular acumulado
         df_por_data['Unidades_Acumulado'] = df_por_data['Unidades'].cumsum()
         df_por_data['Kg_Acumulado'] = df_por_data['Total_kg'].cumsum()
-        
-        fig_acumulado = go.Figure()
-        
-        # Adicionar área para unidades acumuladas
-        fig_acumulado.add_trace(go.Scatter(
-            x=df_por_data['Data'],
-            y=df_por_data['Unidades_Acumulado'],
-            name='Unidades Acumuladas',
-            fill='tozeroy',
-            mode='lines',
-            line=dict(width=2, color=COLOR_PALETTE[1])  # Blue Green
-        ))
-        
-        # Configurar layout
-        fig_acumulado.update_layout(
-            height=400,
-            margin=dict(t=30, b=0, l=0, r=0),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            xaxis_title='Data',
-            yaxis_title='Unidades Acumuladas',
-            showlegend=False
+
+        # Gráfico de área para produção acumulada
+        chart_acumulado = alt.Chart(df_por_data).mark_area(
+            color=COLOR_PALETTE[1],
+            opacity=0.7
+        ).encode(
+            x=alt.X('Data:T', title='Data', axis=alt.Axis(format='%d/%m/%y')),
+            y=alt.Y('Unidades_Acumulado:Q', title='Unidades Acumuladas'),
+            tooltip=['Data', 'Unidades_Acumulado']
+        ).properties(
+            height=400
         )
+
+        c2.altair_chart(chart_acumulado, use_container_width=True)
         
-        st.plotly_chart(fig_acumulado, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+        # Grafico produção diaria
+        st.markdown('<h3 class="section-header">Produção Diária</h3>', unsafe_allow_html=True)
+
+        # Agrupar dados por data
+        df_diario = df_filtrado.groupby('Data')[['Unidades', 'Total_kg']].sum().reset_index()
+
+        # Ordenar por data
+        df_diario = df_diario.sort_values('Data')
+
+        # Gráfico de linha com curvas suaves para produção diária
+        chart_diario = alt.Chart(df_diario).mark_area(
+            point=False,  # Adiciona pontos nos dados
+            strokeWidth=3,  # Espessura da linha
+            color=COLOR_PALETTE[4],
+            opacity=0.3,
+            line={
+                'color': COLOR_PALETTE[4],  # Cor da linha
+                'strokeWidth': 2  # Espessura da linha
+            },
+            interpolate='monotone'  # Tipo de interpolação para curvas suaves
+        ).encode(
+            x=alt.X('Data:T', title='Data', axis=alt.Axis(format='%d/%m/%y')),
+            y=alt.Y('Unidades:Q', title='Unidades Produzidas'),
+            tooltip=['Data:T', 'Unidades:Q']
+        ).properties(
+            height=400
+        )
+
+        # Combinar os gráficos
+        chart_final_diario = (chart_diario)
+
+        st.altair_chart(chart_final_diario, use_container_width=True)
     
     # Tab 3 - Comparativos
     with tab3:
@@ -616,33 +539,37 @@ if not df.empty:
             # Produtos mais produzidos (top 5)
             st.markdown('<h3 class="section-header">Top 5 Produtos Mais Produzidos</h3>', unsafe_allow_html=True)
             
-            top_produtos = df_filtrado.groupby('Produto')['Unidades'].sum().sort_values(ascending=False).head(5)
+            # Preparar dados para os top 5 produtos
+            top_produtos_df = df_filtrado.groupby('Produto')['Unidades'].sum().nlargest(5).reset_index()
+            top_produtos_df = top_produtos_df.sort_values(by='Unidades', ascending=True)  # Ordenar ascendente para o gráfico
             
-            fig_top = px.bar(
-                top_produtos.reset_index(),
-                x='Unidades',
-                y='Produto',
-                orientation='h',
-                template='plotly_white',
-                color_discrete_sequence=[COLOR_PALETTE[4]]  # Maximum Red
+            # Gráfico de barras horizontais para top 5 produtos
+            base_top = alt.Chart(top_produtos_df).encode(
+                y=alt.Y('Produto:N', sort='-x', title=''),
+                x=alt.X('Unidades:Q', title='Unidades'),
+                tooltip=['Produto', 'Unidades']
             )
             
-            fig_top.update_layout(
-                height=400,
-                margin=dict(t=30, b=0, l=0, r=0),
-                showlegend=False,
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                yaxis={'categoryorder': 'total ascending'}
+            # Barras
+            bars_top = base_top.mark_bar(color=COLOR_PALETTE[4])
+            
+            # Texto nas barras
+            text_top = base_top.mark_text(
+                align='left',
+                baseline='middle',
+                dx=3,
+                color='white'
+            ).encode(
+                text=alt.Text('Unidades:Q', format=',')
             )
             
-            fig_top.update_traces(
-                texttemplate='%{x:,.0f}',
-                textposition='inside',
-                textfont=dict(color='white')
+            chart_top_final = (bars_top + text_top).properties(
+                height=400
+            ).configure_view(
+                strokeWidth=0
             )
             
-            st.plotly_chart(fig_top, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+            st.altair_chart(chart_top_final, use_container_width=True)
         
         with col2:
             # Distribuição por dia da semana
@@ -669,39 +596,47 @@ if not df.empty:
             ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
             
             # Agrupar por dia da semana
-            dia_semana_sum = df_weekday.groupby('Dia_Semana_PT')['Unidades'].sum().reindex(ordem_dias)
+            dia_semana_df = df_weekday.groupby('Dia_Semana_PT')['Unidades'].sum().reset_index()
             
             # Remover dias da semana sem produção
-            dia_semana_sum = dia_semana_sum.dropna()
+            dia_semana_df = dia_semana_df[dia_semana_df['Dia_Semana_PT'].isin(ordem_dias)]
             
-            # Criar cores usando a paleta
-            cores_dias = [COLOR_PALETTE[i % len(COLOR_PALETTE)] for i in range(len(dia_semana_sum))]
+            # Criar mapeamento de cores por dia da semana
+            dia_semana_df['order'] = dia_semana_df['Dia_Semana_PT'].apply(lambda x: ordem_dias.index(x) if x in ordem_dias else 999)
+            dia_semana_df = dia_semana_df.sort_values('order')
+            dia_semana_df['color'] = [COLOR_PALETTE[i % len(COLOR_PALETTE)] for i in range(len(dia_semana_df))]
             
-            fig_weekday = px.bar(
-                dia_semana_sum.reset_index(),
-                x='Dia_Semana_PT',
-                y='Unidades',
-                template='plotly_white',
-                color='Dia_Semana_PT',
-                color_discrete_sequence=cores_dias
+            # Gráfico de barras para dias da semana
+            chart_weekday = alt.Chart(dia_semana_df).mark_bar().encode(
+                x=alt.X('Dia_Semana_PT:N', sort=ordem_dias, title=''),
+                y=alt.Y('Unidades:Q', title='Unidades'),
+                color=alt.Color('Dia_Semana_PT:N', scale=alt.Scale(domain=dia_semana_df['Dia_Semana_PT'].tolist(), 
+                                                                  range=dia_semana_df['color'].tolist())),
+                tooltip=['Dia_Semana_PT', 'Unidades']
+            ).properties(
+                height=400
             )
             
-            fig_weekday.update_layout(
-                height=400,
-                margin=dict(t=30, b=0, l=0, r=0),
-                showlegend=False,
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis_title='',
-                xaxis={'categoryorder': 'array', 'categoryarray': ordem_dias}
+            # Adicionar rótulos de texto
+            text_weekday = alt.Chart(dia_semana_df).mark_text(
+                align='center',
+                baseline='bottom',
+                dy=-5
+            ).encode(
+                x=alt.X('Dia_Semana_PT:N', sort=ordem_dias),
+                y=alt.Y('Unidades:Q'),
+                text=alt.Text('Unidades:Q', format=',')
             )
             
-            fig_weekday.update_traces(
-                texttemplate='%{y:,.0f}',
-                textposition='outside'
+            chart_weekday_final = (chart_weekday + text_weekday).properties(
+                height=400
+            ).configure_view(
+                strokeWidth=0
+            ).configure_legend(
+                disable=True  # Remover a legenda
             )
             
-            st.plotly_chart(fig_weekday, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+            st.altair_chart(chart_weekday_final, use_container_width=True)
         
         # Análise por responsável
         st.markdown('<h3 class="section-header">Produção por Responsável</h3>', unsafe_allow_html=True)
@@ -709,29 +644,38 @@ if not df.empty:
         # Agrupar por responsável
         resp_sum = df_filtrado.groupby('Responsável Produção')[['Unidades', 'Total_kg']].sum().reset_index()
         
-        # Gráfico de pizza para produção por responsável
-        fig_resp = px.pie(
-            resp_sum,
-            values='Unidades',
-            names='Responsável Produção',
-            template='plotly_white',
-            color_discrete_sequence=COLOR_PALETTE,
-            hole=0.4
+        # Calcular percentagens para o gráfico de pizza
+        total_unidades = resp_sum['Unidades'].sum()
+        resp_sum['Percentual'] = resp_sum['Unidades'] / total_unidades * 100
+        
+        # Criar campo para formatar texto no tooltip
+        resp_sum['Percentual_Formatado'] = resp_sum['Percentual'].apply(lambda x: f'{x:.1f}%')
+        resp_sum['Unidades_Formatadas'] = resp_sum['Unidades'].apply(lambda x: format_number(x))
+        
+        # Criar gráfico de pizza usando mark_arc (sem calculador ângulos manualmente)
+        pie_chart = alt.Chart(resp_sum).mark_arc(innerRadius=50).encode(
+            theta=alt.Theta('Unidades:Q'),
+            color=alt.Color('Responsável Produção:N', scale=alt.Scale(range=COLOR_PALETTE)),
+            tooltip=[
+                alt.Tooltip('Responsável Produção:N', title='Responsável'),
+                alt.Tooltip('Unidades_Formatadas:N', title='Unidades'),
+                alt.Tooltip('Percentual_Formatado:N', title='Percentual')
+            ]
+        ).properties(
+            height=400
         )
         
-        fig_resp.update_layout(
-            height=400,
-            margin=dict(t=30, b=0, l=0, r=0),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)'
+        # Adicionar texto para os valores
+        text_pie = alt.Chart(resp_sum).mark_text(radius=90).encode(
+            theta=alt.Theta('Unidades:Q', stack=True),
+            text=alt.Text('Percentual_Formatado:N'),
+            color=alt.value('white')
         )
         
-        fig_resp.update_traces(
-            textinfo='percent+label+value',
-            texttemplate='%{percent:.1%}<br>%{label}: %{value:,.0f}'
-        )
+        # Combinar o gráfico
+        chart_resp_final = (pie_chart + text_pie)
         
-        st.plotly_chart(fig_resp, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+        st.altair_chart(chart_resp_final, use_container_width=True)
         
         # Comparativo de eficiência por categoria e responsável
         st.markdown('<h3 class="section-header">Eficiência por Categoria e Responsável</h3>', unsafe_allow_html=True)
@@ -754,28 +698,45 @@ if not df.empty:
             'Data': 'Dias_Trabalhados'
         })
         
-        # Gráfico de barras agrupadas com a paleta de cores
-        fig_efic = px.bar(
-            df_eficiencia_media,
-            x='Categoria',
-            y='Média_Unidades_Diária',
-            color='Responsável Produção',
-            barmode='group',
-            template='plotly_white',
-            text_auto=True,
-            color_discrete_sequence=COLOR_PALETTE
+        # Arredondar valores para facilitar a visualização
+        df_eficiencia_media['Média_Unidades_Diária'] = df_eficiencia_media['Média_Unidades_Diária'].round(1)
+        
+        # Gráfico de barras agrupadas (versão corrigida sem faceting)
+        chart_efic = alt.Chart(df_eficiencia_media).mark_bar().encode(
+            x=alt.X('Categoria:N', title=''),
+            y=alt.Y('Média_Unidades_Diária:Q', title='Média Diária (Unidades)'),
+            color=alt.Color('Responsável Produção:N', scale=alt.Scale(range=COLOR_PALETTE)),
+            xOffset='Responsável Produção:N',  # Usar xOffset para agrupar barras lado a lado
+            tooltip=[
+                'Categoria', 
+                'Responsável Produção', 
+                alt.Tooltip('Média_Unidades_Diária:Q', title='Média Diária'), 
+                alt.Tooltip('Dias_Trabalhados:Q', title='Dias Trabalhados')
+            ]
+        ).properties(
+            height=400
         )
         
-        fig_efic.update_layout(
-            height=400,
-            margin=dict(t=30, b=0, l=0, r=0),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            xaxis_title='',
-            yaxis_title='Média Diária (Unidades)'
+        # Adicionar texto às barras
+        text_efic = alt.Chart(df_eficiencia_media).mark_text(
+            align='center',
+            baseline='middle',
+            dy=-10
+        ).encode(
+            x=alt.X('Categoria:N'),
+            y=alt.Y('Média_Unidades_Diária:Q'),
+            text=alt.Text('Média_Unidades_Diária:Q', format='.1f'),
+            xOffset='Responsável Produção:N'  # Alinhar texto com as barras
         )
         
-        st.plotly_chart(fig_efic, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+        # Combinar e configurar
+        chart_efic_final = (chart_efic + text_efic).configure_view(
+            strokeWidth=0
+        ).configure_legend(
+            symbolType='circle'  # Alterar formato da legenda para círculo
+        )
+        
+        st.altair_chart(chart_efic_final, use_container_width=True)
     
     # Tabela detalhada
     st.markdown('---')
@@ -893,3 +854,4 @@ if not df.empty:
 
 else:
     st.error("Não foi possível carregar os dados. Verifique a URL da planilha ou sua conexão de internet.")
+    
