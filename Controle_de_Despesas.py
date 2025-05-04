@@ -3,6 +3,7 @@ import numpy as np
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 from datetime import datetime
 import locale
 from datetime import timedelta
@@ -13,6 +14,12 @@ st.set_page_config(
     page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded"
+)
+
+# Configuração global do Plotly para formato brasileiro
+pio.templates.default = "plotly_white"
+pio.templates[pio.templates.default].layout.update(
+    separators=', ',  # Formato brasileiro: ponto para milhar, vírgula para decimal
 )
 
 # Aplicando estilo CSS customizado
@@ -60,6 +67,22 @@ st.markdown("""
         padding: 0.5rem;
         box-shadow: 0 0.1rem 0.2rem rgba(0,0,0,0.05);
     }
+    
+    /* Estilo para botões de seleção rápida */
+    div[data-testid="stButton"] button {
+        background-color: #f0f2f6;
+        border-radius: 0.5rem;
+        color: #2c3e50;
+        font-weight: 500;
+        border: 1px solid #e0e3e9;
+        transition: all 0.3s ease;
+    }
+    
+    div[data-testid="stButton"] button:hover {
+        background-color: #e0e3e9;
+        border-color: #c0c3c9;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -99,12 +122,22 @@ def traduzir_mes(texto):
         texto = texto.replace(en, pt)
     return texto
 
-# Leitura e tratamento do DataFrame
-sheet_url = "https://docs.google.com/spreadsheets/d/1nbNmbgO37FC-9dlwivefFZnQ43-5A8H8Is7K9WLqgx4/export?format=csv&gid=850128765"
+# Função para formatar valores no padrão brasileiro
+def formatar_valor_br(valor):
+    if pd.isna(valor) or valor == 0:
+        return "R$ 0,00"
+    return f'R$ {abs(valor):,.2f}'.replace(',', '*').replace('.', ',').replace('*', '.')
+
+# Leitura e tratamento do DataFrame para Despesas Biasi
+# Nova URL para despesas Biasi
+sheet_url_biasi = "https://docs.google.com/spreadsheets/d/1tw1i3l2UxCJrm65TiIIieeVXAH8-o1uqjM11yGfNhXE/export?format=csv&gid=0"
+
+# Nova URL para despesas Pessoal
+sheet_url_pessoal = "https://docs.google.com/spreadsheets/d/1tw1i3l2UxCJrm65TiIIieeVXAH8-o1uqjM11yGfNhXE/export?format=csv&gid=1520802263"
 
 @st.cache_data(ttl=300)  # Cache por 5 minutos
-def load_data():
-    df = pd.read_csv(sheet_url)
+def load_data_biasi():
+    df = pd.read_csv(sheet_url_biasi)
     new_columns = df.iloc[0]
     df.columns = df.columns.astype(str)
     df = df.iloc[1:]
@@ -112,27 +145,45 @@ def load_data():
     df = df.dropna(axis=1, how='all')
     return df
 
-df = load_data()
+@st.cache_data(ttl=300)  # Cache por 5 minutos
+def load_data_pessoal():
+    df = pd.read_csv(sheet_url_pessoal)
+    new_columns = df.iloc[0]
+    df.columns = df.columns.astype(str)
+    df = df.iloc[1:]
+    df.columns = new_columns
+    df = df.dropna(axis=1, how='all')
+    return df
 
-# Separar em dois DataFrames
-df_contas = df.iloc[:, 0:6]
-df_pessoal = df.iloc[:, 7:10]
+# Carregando os dados de ambas as fontes
+df_biasi = load_data_biasi()
+df_pessoal_raw = load_data_pessoal()
 
-# Renomear colunas
+# Processamento dos dados Biasi
+df_contas = df_biasi.iloc[:, 0:6]
 df_contas.columns = ['Nome', 'Valor', 'Data_Vencimento', 'Data_Pagamento', 'Forma_Pagamento', 'Categoria']
-df_pessoal.columns = ['Nome', 'Valor', 'Data']
 
 # Remover linhas onde Nome é nulo
 df_contas = df_contas.dropna(subset=['Nome'])
-df_pessoal = df_pessoal.dropna(subset=['Nome'])
 
 # Limpar valores monetários
 df_contas['Valor'] = df_contas['Valor'].apply(clean_monetary_value)
-df_pessoal['Valor'] = df_pessoal['Valor'].apply(clean_monetary_value)
 
 # Converter datas
 df_contas['Data_Vencimento'] = pd.to_datetime(df_contas['Data_Vencimento'], format='%d/%m/%Y', errors='coerce')
 df_contas['Data_Pagamento'] = pd.to_datetime(df_contas['Data_Pagamento'], format='%d/%m/%Y', errors='coerce')
+
+# Processamento dos dados Pessoal
+df_pessoal = df_pessoal_raw.iloc[:, 0:3]  # Ajustando para pegar as primeiras 3 colunas
+df_pessoal.columns = ['Nome', 'Valor', 'Data']
+
+# Remover linhas onde Nome é nulo
+df_pessoal = df_pessoal.dropna(subset=['Nome'])
+
+# Limpar valores monetários
+df_pessoal['Valor'] = df_pessoal['Valor'].apply(clean_monetary_value)
+
+# Converter datas
 df_pessoal['Data'] = pd.to_datetime(df_pessoal['Data'], format='%d/%m/%Y', errors='coerce')
 
 # Sidebar com filtros
@@ -146,14 +197,81 @@ with st.sidebar:
     
     st.markdown("### 📅 Período de Análise")
     
-    # Usar o date_input padrão do Streamlit
+    # Função para calcular datas para os botões de período
+    def calcular_datas_periodo(periodo):
+        hoje = datetime.now().date()
+        primeiro_dia_mes_atual = hoje.replace(day=1)
+        
+        # Garantir que as datas estejam dentro dos limites disponíveis
+        if periodo == "este_mes":
+            # Do dia 1 do mês atual até hoje (ou data_final se hoje > data_final)
+            inicio = max(primeiro_dia_mes_atual, data_inicial)
+            fim = min(hoje, data_final)
+            return inicio, fim
+        elif periodo == "mes_passado":
+            # Mês anterior completo (ajustado para os limites)
+            ultimo_dia_mes_passado = primeiro_dia_mes_atual - timedelta(days=1)
+            primeiro_dia_mes_passado = ultimo_dia_mes_passado.replace(day=1)
+            inicio = max(primeiro_dia_mes_passado, data_inicial)
+            fim = min(ultimo_dia_mes_passado, data_final)
+            return inicio, fim
+        elif periodo == "este_ano":
+            # Do dia 1 de janeiro do ano atual até hoje (ajustado para os limites)
+            primeiro_dia_ano = hoje.replace(month=1, day=1)
+            inicio = max(primeiro_dia_ano, data_inicial)
+            fim = min(hoje, data_final)
+            return inicio, fim
+        elif periodo == "tudo":
+            # Todo o período disponível
+            return data_inicial, data_final
+    
+    # Botões para seleção rápida de períodos
+    st.markdown("### ⚡ Seleção Rápida")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Este Ano", use_container_width=True):
+            datas_periodo = calcular_datas_periodo("este_ano")
+        if st.button("Mês Passado", use_container_width=True):
+            datas_periodo = calcular_datas_periodo("mes_passado")
+    
+    with col2:
+        if st.button("Este Mês", use_container_width=True):
+            datas_periodo = calcular_datas_periodo("este_mes")
+        if st.button("Tudo", use_container_width=True):
+            datas_periodo = calcular_datas_periodo("tudo")
+    
+    # Armazenar seleção em session state caso um botão seja clicado
+    if 'datas_periodo' not in st.session_state:
+        st.session_state.datas_periodo = (data_inicial, data_final)
+    
+    # Atualizar as datas se um botão foi clicado
+    if 'datas_periodo' in locals():
+        st.session_state.datas_periodo = datas_periodo
+    
+    # Usar o date_input com o valor do session state, garantindo que esteja dentro dos limites
+    datas_atuais = st.session_state.datas_periodo
+    # Validar que as datas estão dentro dos limites válidos
+    if isinstance(datas_atuais, tuple) and len(datas_atuais) == 2:
+        if datas_atuais[0] < data_inicial:
+            datas_atuais = (data_inicial, datas_atuais[1])
+        if datas_atuais[1] > data_final:
+            datas_atuais = (datas_atuais[0], data_final)
+    else:
+        datas_atuais = (data_inicial, data_final)
+    
+    # Usar o date_input com valores validados
     datas = st.date_input(
         "Selecione o período",
-        value=(data_inicial, data_final),
+        value=datas_atuais,
         min_value=data_inicial,
         max_value=data_final,
         format="DD/MM/YYYY"  # Formato brasileiro
     )
+    
+    # Atualizar o session state com a seleção manual do usuário
+    if datas != st.session_state.datas_periodo:
+        st.session_state.datas_periodo = datas
     
     if len(datas) == 2:
         start_date, end_date = datas
@@ -194,7 +312,7 @@ with tab1:
         st.markdown('<div class="metric-blue">', unsafe_allow_html=True)
         st.metric(
             label="Total de Despesas",
-            value=convert_to_real(df_contas_filtrado['Valor'].sum())
+            value=formatar_valor_br(df_contas_filtrado['Valor'].sum())
         )
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -202,7 +320,7 @@ with tab1:
         st.markdown('<div class="metric-blue">', unsafe_allow_html=True)
         st.metric(
             label="Média por Despesa",
-            value=convert_to_real(df_contas_filtrado['Valor'].mean())
+            value=formatar_valor_br(df_contas_filtrado['Valor'].mean())
         )
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -219,7 +337,7 @@ with tab1:
         st.markdown('<div class="metric-purple">', unsafe_allow_html=True)
         st.metric(
             label=f"Maior Despesa: {categoria_mais_valor}",
-            value=convert_to_real(valor_mais_valor)
+            value=formatar_valor_br(valor_mais_valor)
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -237,7 +355,7 @@ with tab1:
         
         # Calculando um threshold para determinar posição do texto (15% do valor máximo)
         valor_max = categoria_sum.max()
-        threshold = valor_max * 0.15
+        threshold = valor_max * 0.20
         
         # Lista para armazenar posições de texto
         text_positions = []
@@ -252,6 +370,9 @@ with tab1:
                 text_positions.append('outside')
                 text_colors.append('black')
         
+        # Valores formatados para exibição no gráfico
+        valores_formatados = [formatar_valor_br(v) for v in categoria_sum.values]
+        
         # Criando o gráfico base
         fig_categoria = px.bar(
             categoria_sum,
@@ -262,7 +383,7 @@ with tab1:
         
         # Configurações gerais do layout
         fig_categoria.update_layout(
-            height=400,
+            height=600,
             margin=dict(t=30, b=0, l=0, r=0),
             yaxis_title='',
             xaxis_title='Valor Total (R$)',
@@ -273,8 +394,14 @@ with tab1:
         
         # Aplicando as posições de texto individualmente
         fig_categoria.update_traces(
-            texttemplate='R$ %{x:,.2f}',
+            text=valores_formatados,  # Usando os valores já formatados
             textposition=text_positions
+        )
+        
+        # Formatação do eixo X para padrão brasileiro
+        fig_categoria.update_xaxes(
+            tickprefix="R$ ",
+            separatethousands=True
         )
         
         st.plotly_chart(fig_categoria, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
@@ -289,6 +416,9 @@ with tab1:
         # Definindo a paleta de cores personalizada (da imagem)
         custom_colors = ['#086788', '#07A0C3', '#F0C808', '#FFF1D0', '#DD1C1A']
         
+        # Valores formatados para o hover e exibição
+        valores_formatados = [formatar_valor_br(v) for v in payment_data.values]
+        
         # Criando gráfico de pizza com as cores personalizadas
         fig_payment = px.pie(
             values=payment_data.values,
@@ -296,19 +426,41 @@ with tab1:
             template='plotly_white',
             color_discrete_sequence=custom_colors  # Usando a paleta personalizada
         )
+        
+        # Configurando o layout
         fig_payment.update_layout(
             height=400,
             margin=dict(t=30, b=0, l=0, r=0),
             showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.15,
+                xanchor="center",
+                x=0.5
+            ),
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)'
         )
+        
+        # Gerando textos customizados para exibição e hover
+        percent_values = payment_data.values / payment_data.values.sum() * 100
+        
+        # Criando textos customizados que combinam percentual e valor formatado
+        text_display = []
+        for value, percent in zip(payment_data.values, percent_values):
+            formatted_value = formatar_valor_br(value)
+            text_display.append(f"{percent:.1f}% ({formatted_value})")
+        
+        # Aplicando textos personalizados
         fig_payment.update_traces(
-            textinfo='percent+value',
-            texttemplate='%{percent} (R$ %{value:,.2f})',
+            text=text_display,
+            textinfo='text+label',
             hoverinfo='label+percent+value'
         )
+        
         st.plotly_chart(fig_payment, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+
 
     # Tabela detalhada
     st.markdown('---')
@@ -330,9 +482,10 @@ with tab1:
     # Reordenar colunas
     df_contas_display = df_contas_display[['Nome', 'Valor', 'Data_Vencimento', 'Data_Pagamento', 'Forma_Pagamento', 'Categoria', 'Status']]
     
+    # Utilizando a função formatar_valor_br para formatar a coluna Valor no estilo brasileiro
     st.dataframe(
         df_contas_display.style
-        .format({'Valor': 'R$ {:,.2f}'})
+        .format({'Valor': lambda x: formatar_valor_br(x)})
         .set_properties(**{
             'color': '#2c3e50',
             'border-color': '#dee2e6'
@@ -367,7 +520,7 @@ with tab2:
         st.markdown('<div class="metric-green">', unsafe_allow_html=True)
         st.metric(
             label="Total de Despesas",
-            value=convert_to_real(total_despesas)
+            value=formatar_valor_br(total_despesas)
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -381,7 +534,7 @@ with tab2:
         st.markdown('<div class="metric-blue">', unsafe_allow_html=True)
         st.metric(
             label="Média por Despesa",
-            value=convert_to_real(media_despesas)
+            value=formatar_valor_br(media_despesas)
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -413,7 +566,7 @@ with tab2:
         st.markdown('<div class="metric-purple">', unsafe_allow_html=True)
         st.metric(
             label=f"Maior Gasto: {pessoa_mais_gastou}",
-            value=convert_to_real(valor_mais_gastou)
+            value=formatar_valor_br(valor_mais_gastou)
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -429,14 +582,12 @@ with tab2:
             pessoa_sum = df_pessoal_filtrado.groupby('Nome')['Valor'].sum().sort_values(ascending=False)
 
             if not pessoa_sum.empty:
-                # Convertendo a série para DataFrame para melhor manipulação
-                df_plot = pessoa_sum.reset_index()
+                # Valores formatados para exibição
+                valores_formatados = [formatar_valor_br(v) for v in pessoa_sum.values]
                 
                 # Criando o gráfico de colunas (barras verticais)
                 fig_pessoa = px.bar(
-                    df_plot,
-                    x='Nome',           # Eixo X com nomes das pessoas
-                    y='Valor',          # Eixo Y com valores
+                    pessoa_sum,
                     template='plotly_white',
                     color_discrete_sequence=['#9775fa']
                 )
@@ -452,9 +603,16 @@ with tab2:
                     paper_bgcolor='rgba(0,0,0,0)'
                 )
                 
-                # Configurando o formato dos textos nas barras
+                # Configurando o formato do eixo Y (valores em R$)
+                fig_pessoa.update_yaxes(
+                    tickprefix="R$ ",
+                    separatethousands=True
+                )
+                
+                # Configurando o texto e posição
                 fig_pessoa.update_traces(
-                    texttemplate='R$ %{y:,.2f}',
+                    text=valores_formatados,
+                    texttemplate="%{text}",
                     textposition='outside'
                 )
                 
@@ -477,6 +635,9 @@ with tab2:
                 df_pessoal_sorted = df_temp.sort_values('Data')
                 df_pessoal_sorted['Valor_Acumulado'] = df_pessoal_sorted['Valor'].cumsum()
                 
+                # Criando valores formatados para hover
+                valores_formatados = [formatar_valor_br(v) for v in df_pessoal_sorted['Valor_Acumulado']]
+                
                 fig_acumulado = px.line(
                     df_pessoal_sorted,
                     x='Data',
@@ -484,6 +645,24 @@ with tab2:
                     template='plotly_white',
                     color_discrete_sequence=['#9775fa']
                 )
+                
+                # Adicionando os valores formatados como customdata para uso no hover
+                fig_acumulado.update_traces(
+                    customdata=valores_formatados
+                )
+                
+                # Configurando o hover com textos formatados
+                hovertemplate = '<b>Data:</b> %{x|%d/%m/%Y}<br><b>Valor:</b> %{customdata}<extra></extra>'
+                fig_acumulado.update_traces(
+                    hovertemplate=hovertemplate
+                )
+                
+                # Configurando o eixo Y com valores em R$
+                fig_acumulado.update_yaxes(
+                    tickprefix="R$ ",
+                    separatethousands=True
+                )
+                
                 fig_acumulado.update_layout(
                     height=400,
                     margin=dict(t=30, b=0, l=0, r=0),
@@ -510,9 +689,10 @@ with tab2:
     # Reordenar colunas
     df_pessoal_display = df_pessoal_display[['Data', 'Nome', 'Valor']]
     
+    # Utilizando a função formatar_valor_br para formatar a coluna Valor no estilo brasileiro
     st.dataframe(
         df_pessoal_display.style
-        .format({'Valor': 'R$ {:,.2f}'})
+        .format({'Valor': lambda x: formatar_valor_br(x)})
         .set_properties(**{
             'color': '#2c3e50',
             'border-color': '#dee2e6'
