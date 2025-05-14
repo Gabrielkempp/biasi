@@ -6,6 +6,7 @@ from datetime import datetime
 import locale
 from datetime import timedelta
 import io
+import plotly.express as px
 
 # Configuração da página
 st.set_page_config(
@@ -253,7 +254,14 @@ if not df.empty:
     # Remover linhas com valores NaN em colunas importantes
     df = df.dropna(subset=['Data', 'Produto', 'Unidades'])
     
-    df['Unidades'] = pd.to_numeric(df['Unidades'], errors='coerce', decimal=',')
+    # Substituir vírgulas por pontos
+    df['Unidades'] = df['Unidades'].str.replace(',', '.')
+
+    # Filtrar linhas que podem ser convertidas para números
+    df = df[df['Unidades'].str.match(r'^-?\d*\.?\d*$')]
+
+    # Agora fazer a conversão para float
+    df['Unidades'] = df['Unidades'].astype(float)
     
     # Converter 'Data' para datetime - formato brasileiro DD/MM/YYYY
     df['Data'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
@@ -371,48 +379,73 @@ if not df.empty:
         
         # Gráfico: Total de unidades por produto
         producto_df = df_filtrado.groupby('Produto')['Unidades'].sum().reset_index()
-        producto_df = producto_df.sort_values(by="Unidades", ascending=False)  # Ordem decrescente
+        producto_df = producto_df.sort_values(by="Unidades", ascending=True)  # Ordem ascendente como no segundo gráfico
         
-        # Manter a ordem original no dataframe (importante para o Altair respeitar)
-        producto_df['ordem'] = range(len(producto_df))
+        # Aplicar capitalização aos produtos, como no segundo gráfico
+        producto_df['Produto'] = producto_df['Produto'].str.capitalize()
         
-        # Calcular o tamanho relativo para posicionamento do texto
-        producto_df['tamanho_relativo'] = producto_df['Unidades'] / producto_df['Unidades'].max()
+        # Calcular threshold para posicionamento do texto (20% do valor máximo)
+        valor_max = producto_df['Unidades'].max()
+        threshold = valor_max * 0.20
         
-        # Criar um campo personalizado para ordenação
-        domain = producto_df['Produto'].tolist()
+        # Determinar posição do texto para cada valor
+        text_positions = []
+        for valor in producto_df['Unidades']:
+            if valor >= threshold:
+                text_positions.append('inside')
+            else:
+                text_positions.append('outside')
         
-        # Criar gráfico base e as barras
-        chart_produto = alt.Chart(producto_df).mark_bar(color=PRIMARY_COLOR).encode(
-            y=alt.Y('Produto:N', sort=domain, title='Produto'),
-            x=alt.X('Unidades:Q', title='Total de Unidades'),
-            tooltip=['Produto', 'Unidades']
+        # Criar gráfico usando Plotly em vez de Altair
+        fig_produto = px.bar(
+            producto_df,
+            x='Unidades', 
+            y='Produto',
+            orientation='h',
+            template='plotly_white',
+            color_discrete_sequence=['#DD1C1A']  # Mesma cor do segundo gráfico
         )
         
-        # Texto para barras
-        text_grandes = alt.Chart(producto_df).mark_text(
-            align='left',
-            baseline='middle',
-            dx=15,
-            color='red',
-            fontSize=14,
-            fontWeight='bold'
-        ).encode(
-            y=alt.Y('Produto:N', sort=domain),
-            x='Unidades:Q',
-            text=alt.Text('Unidades:Q', format=',')
+        # Configurações gerais do layout
+        fig_produto.update_layout(
+            height=600,
+            margin=dict(t=30, b=0, l=0, r=0),
+            yaxis_title='',
+            xaxis_title='Total de Unidades',
+            showlegend=False,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
         )
         
-        # Combinar e configurar
-        chart_final_produto = (chart_produto + text_grandes).properties(
-            height=500
-        ).configure_view(
-            strokeWidth=0
-        ).configure_axis(
-            grid=False
+        # Formatando os valores para exibição no gráfico no padrão brasileiro
+        valores_formatados = []
+        for v in producto_df['Unidades']:
+            # Formatar para o padrão brasileiro (R$ xx.xxx,xx)
+            valor_formatado = f"R$ {format_decimal_br(v, 2)}"
+            valores_formatados.append(valor_formatado)
+        
+        # Atualizar o texto e suas propriedades
+        fig_produto.update_traces(
+            text=valores_formatados,
+            textposition=text_positions,
+            insidetextfont=dict(color='white'),
+            outsidetextfont=dict(color='black')  # Usando preto para melhor visibilidade
         )
         
-        st.altair_chart(chart_final_produto, use_container_width=True)
+        # Formatação do eixo X no padrão brasileiro
+        fig_produto.update_xaxes(
+            tickprefix="R$ ",
+            separatethousands=True
+        )
+        
+        # Atualizar o formato dos números no eixo X para padrão brasileiro
+        fig_produto.update_layout(
+            xaxis=dict(
+                tickformat=".2f",  # Formato com 2 casas decimais
+            )
+        )
+        
+        st.plotly_chart(fig_produto, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
     
     # Tab 2 - Evolução Temporal
     with tab2:
