@@ -28,6 +28,11 @@ st.markdown("""
     .main {
         padding: 0rem 1rem;
     }
+            
+    header {
+         visibility: hidden;
+        }     
+
     .st-emotion-cache-1r6slb0 {
         background-color: #f8f9fa;
         border-radius: 0.5rem;
