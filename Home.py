@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Dashboard Financeiro Biasi",
     page_icon="💰",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Configurar locale para formato brasileiro
@@ -44,7 +44,9 @@ st.markdown("""
     
     /* Estilo para os botões do Streamlit */
     div.stButton > button {
-        display: block;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
         width: 100%;
         background-color: #f8f9fa;
         border: none;
@@ -56,8 +58,10 @@ st.markdown("""
         font-weight: normal;
         margin-bottom: 1.5rem;
         transition: transform 0.3s, box-shadow 0.3s;
-        height: auto !important;
+        height: 150px !important; /* Altura fixa para todos os cards */
+        min-height: 200px !important;
         white-space: normal !important;
+        overflow-y: auto !important; /* Adiciona scroll se o conteúdo for muito extenso */
     }
     
     div.stButton > button:hover {
@@ -81,18 +85,29 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         background-color: #f0f0f0;
     }
+
+    /* Estilo para o texto dentro dos botões */
+    div.stButton > button p {
+        margin: 0;
+    }
+    
+    div.stButton > button strong {
+        font-size: 1.1rem;
+        margin-bottom: 0.8rem;
+        display: block;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # Título principal
 st.title("💰 Dashboard Financeiro Biasi")
-st.markdown("Bem-vindo ao sistema de dashboards financeiros da Biasi. Escolha uma das páginas na barra lateral para acessar os diferentes relatórios.")
+st.markdown("Bem-vindo ao sistema de dashboards financeiros da Biasi. Escolha uma das páginas para acessar os diferentes relatórios.")
 
 # Visão geral dos dashboards disponíveis
 st.header("Dashboards Disponíveis")
 
 # Criar grid para os cards de dashboards
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 # Configuração dos dashboards
 dashboards = [
@@ -100,36 +115,36 @@ dashboards = [
         "titulo": "Análise de Financiamentos",
         "descricao": "Acompanhe o status dos financiamentos, valores pagos e a pagar, além de projeções de quitação.",
         "icon": "💰",
-        "pagina": "1_Analise_Financiamentos",
+        "pagina": "1_💰_Analise_Financiamentos",
         "coluna": col1
     },
     {
         "titulo": "Controle de Entrada e Saída",
         "descricao": "Visualize o balanço financeiro com entradas, saídas e comparativos com metas estabelecidas.",
         "icon": "📊",
-        "pagina": "2_Controle_Entradas_Saidas",
-        "coluna": col1
+        "pagina": "2_📊_Controle_Entradas_Saidas",
+        "coluna": col2
     },
     {
         "titulo": "Controle de Despesas",
         "descricao": "Acompanhe despesas fixas e variáveis, categorizadas por tipo e forma de pagamento.",
         "icon": "💸",
-        "pagina": "3_Controle_Despesas",
-        "coluna": col2
+        "pagina": "3_💸_Controle_Despesas",
+        "coluna": col3
     },
     {
         "titulo": "Análise de Produção",
         "descricao": "Monitore a produção por período, produto, categoria e responsável, com métricas de eficiência.",
         "icon": "🏭",
-        "pagina": "5_Analise_Producao",
-        "coluna": col2
+        "pagina": "5_🏭_Analise_Producao",
+        "coluna": col4
     },
     {
         "titulo": "Análise de Dívidas",
         "descricao": "Visualize o detalhamento das dívidas, status de pagamento e valores em atraso.",
-        "icon": "📈",
-        "pagina": "4_Analise_Dividas",
-        "coluna": col3
+        "icon": "📉",
+        "pagina": "4_📉_Analise_Dividas",
+        "coluna": col5
     }
 ]
 
@@ -140,26 +155,5 @@ for dash in dashboards:
         if st.button(btn_label, key=dash["pagina"], use_container_width=True):
             st.switch_page(f"pages/{dash['pagina']}.py")
 
-# Informações gerais
 st.markdown("---")
-st.header("Sobre o Dashboard")
-st.markdown("""
-Este sistema de dashboards foi desenvolvido para ajudar na gestão financeira da Biasi, 
-oferecendo visualizações claras e detalhadas dos diversos aspectos financeiros da empresa.
-
-### Principais funcionalidades:
-- Acompanhamento de financiamentos e dívidas
-- Controle de despesas fixas e variáveis
-- Monitoramento de entradas e saídas financeiras
-- Análise de produção e eficiência
-
-### Como usar:
-1. Selecione o dashboard desejado no menu lateral ou clique nos cards acima
-2. Utilize os filtros disponíveis para personalizar as visualizações
-3. Explore os gráficos e tabelas interativos
-4. Exporte os dados quando necessário
-""")
-
-# Rodapé
-st.markdown("---")
-st.caption(f"Dashboard Financeiro Biasi • Atualizado em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+st.caption(f"Dashboard Biasi • Atualizado em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
